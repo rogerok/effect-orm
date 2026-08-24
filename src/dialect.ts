@@ -1,5 +1,10 @@
+export type DialectId = 'postgres' | 'sqlite';
+
+export const isPostgresDialect = (dialect: DialectId): dialect is 'postgres' =>
+  dialect === 'postgres';
+
 export interface Dialect {
-  readonly id: 'postgres' | 'sqlite';
+  readonly id: DialectId;
   readonly supportsReturning: boolean;
   readonly mapColumnType: (
     sqlType: string,
