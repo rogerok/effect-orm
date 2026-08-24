@@ -1,0 +1,66 @@
+{
+  "name": "effect-orm",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check-types": "tsc -p tsconfig.json --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "prepare": "effect-tsgo patch --typescript --typescript-package @typescript/native --no-oxlint && husky",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.0.0-rc.108",
+    "@effect/sql-pg": "4.0.0-rc.108",
+    "effect": "4.0.0-rc.108",
+    "kysely": "0.29.5",
+    "pg": "^8.23.0",
+    "ts-pattern": "^5.9.0"
+  },
+  "devDependencies": {
+    "@effect/tsgo": "^0.36.4",
+    "@effect/vitest": "4.0.0-rc.108",
+    "@eslint/js": "^9.39.1",
+    "@testcontainers/postgresql": "^12.1.0",
+    "@types/node": "^22.15.3",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "@types/pg": "^8.21.0",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.1",
+    "eslint-plugin-only-warn": "^1.1.0",
+    "eslint-plugin-perfectionist": "^5.10.1",
+    "eslint-plugin-sonarjs": "^4.2.0",
+    "globals": "^16.5.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.3.0",
+    "prettier": "^3.7.4",
+    "tsx": "^4.23.11",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.10"
+  },
+  "lint-staged": {
+    "*.{js,mjs,cjs,ts,mts,cts}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yaml,yml}": "prettier --write"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=25"
+  }
+}
