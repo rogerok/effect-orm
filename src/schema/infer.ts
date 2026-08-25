@@ -21,10 +21,18 @@ export type InferRow<T extends TableDef<string, any>> = {
 // oxlint-disable-next-line typescript/no-explicit-any
 export type InferInsert<T extends TableDef<string, any>> = {
   [
-    K in keyof T['_columns'] as T['_columns'][K]['_pk'] extends true ? K : never
+    K in keyof T['_columns'] as T['_columns'][K]['_pk'] extends true
+      ? K
+      : T['_columns'][K]['_hasDefault'] extends true
+        ? K
+        : never
   ]?: InferColumn<T['_columns'][K]>;
 } & {
   [
-    K in keyof T['_columns'] as T['_columns'][K]['_pk'] extends true ? never : K
+    K in keyof T['_columns'] as T['_columns'][K]['_pk'] extends true
+      ? never
+      : T['_columns'][K]['_hasDefault'] extends true
+        ? never
+        : K
   ]: InferColumn<T['_columns'][K]>;
 };

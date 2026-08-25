@@ -16,6 +16,7 @@ export interface ColumnDef<
   readonly _pk: PK;
   readonly _type: T;
   readonly _default?: unknown;
+  readonly _hasDefault?: boolean;
   readonly _codec?: (dialectId: DialectId) => Codec<unknown, unknown>;
 }
 
@@ -23,6 +24,18 @@ export const withCodec = <T, S, C extends ColumnDef>(
   c: C,
   codecFn: (d: 'postgres' | 'sqlite') => Codec<T, S>,
 ): C => ({ ...c, _codec: codecFn as never });
+
+export const withDefault = <C extends ColumnDef>(
+  c: C,
+  value: unknown,
+): {
+  _default: unknown;
+  _hasDefault: true;
+} & C => ({
+  ...c,
+  _default: value,
+  _hasDefault: true,
+});
 
 // Smart constructors
 export const integer = (): ColumnDef<'integer', false, false> => ({

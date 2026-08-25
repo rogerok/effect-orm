@@ -16,6 +16,7 @@
   },
   "ignorePatterns": ["dist/**", "coverage/**", "node_modules/**"],
   "rules": {
+    "no-underscore-dangle": "off",
     "perfectionist/sort-enums": "warn",
     "perfectionist/sort-exports": "warn",
     "perfectionist/sort-imports": "warn",
