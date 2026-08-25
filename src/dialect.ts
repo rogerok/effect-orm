@@ -8,7 +8,7 @@ export interface Dialect {
   readonly supportsReturning: boolean;
   readonly mapColumnType: (
     sqlType: string,
-    opts: { autoIncrement: boolean },
+    opts: { autoIncrement?: boolean; length?: number },
   ) => string;
   readonly placeholder: (n: number) => string;
   readonly quoteIdentifier: (name: string) => string;
@@ -18,9 +18,13 @@ export const PgDialect: Dialect = {
   id: 'postgres',
   placeholder: (n) => `$${n}`,
   quoteIdentifier: (name) => `"${name.replace(/"/g, '""')}"`,
-  mapColumnType: (t, { autoIncrement }) => {
+  mapColumnType: (t, { autoIncrement, length }) => {
     if (autoIncrement && t === 'integer') {
       return 'BIGSERIAL';
+    }
+
+    if (t === 'varchar' && Number.isInteger(length)) {
+      return `VARCHAR(${length})`;
     }
 
     return (
@@ -40,13 +44,21 @@ export const SqliteDialect: Dialect = {
   id: 'sqlite',
   placeholder: () => '?',
   quoteIdentifier: (name) => `"${name.replace(/"/g, '""')}"`,
-  mapColumnType: (t) =>
-    ({
-      integer: 'INTEGER',
-      real: 'REAL',
-      text: 'TEXT',
-      blob: 'BLOB',
-      boolean: 'INTEGER', //sqlite не имеет boolean - кодируем как 0 / 1
-    })[t] ?? t.toUpperCase(),
+  mapColumnType: (t, { length }) => {
+    if (t === 'varchar' && Number.isInteger(length)) {
+      return `VARCHAR(${length})`;
+    }
+
+    return (
+      {
+        integer: 'INTEGER',
+        real: 'REAL',
+        text: 'TEXT',
+        blob: 'BLOB',
+        boolean: 'INTEGER', //sqlite не имеет boolean - кодируем как 0 / 1
+      }[t] ?? t.toUpperCase()
+    );
+  },
+
   supportsReturning: true,
 };

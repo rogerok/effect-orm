@@ -17,6 +17,7 @@ export interface ColumnDef<
   readonly _type: T;
   readonly _default?: unknown;
   readonly _hasDefault?: boolean;
+  readonly _length?: number;
   readonly _codec?: (dialectId: DialectId) => Codec<unknown, unknown>;
 }
 
@@ -56,6 +57,15 @@ export const real = (): ColumnDef<'real', false, false> => ({
   _type: 'real',
 });
 
+export const varchar = <N extends number>(
+  n: N,
+): { _length: N } & ColumnDef<'text', false, false> => ({
+  _nullable: false,
+  _pk: false,
+  _type: 'text',
+  _length: n,
+});
+
 export const bool = (): ColumnDef<'boolean', false, false> =>
   withCodec(
     {
@@ -73,10 +83,13 @@ export const json = <T>(): ColumnDef<'text', false, false> =>
   withCodec({ _type: 'text', _nullable: false, _pk: false }, jsonCodec<T>);
 
 // Modifiers
-export const nullable = <T extends SqlType, PK extends boolean>(
-  c: ColumnDef<T, false, PK>,
-): ColumnDef<T, true, PK> => ({ ...c, _nullable: true });
+export const nullable = <C extends ColumnDef<SqlType, false, boolean>>(
+  c: C,
+): { readonly _nullable: true } & Omit<C, '_nullable'> => ({
+  ...c,
+  _nullable: true,
+});
 
-export const primaryKey = <T extends SqlType, N extends boolean>(
-  c: ColumnDef<T, N, false>,
-): ColumnDef<T, N, true> => ({ ...c, _pk: true });
+export const primaryKey = <C extends ColumnDef<SqlType, boolean, false>>(
+  c: C,
+): { readonly _pk: true } & Omit<C, '_pk'> => ({ ...c, _pk: true });
