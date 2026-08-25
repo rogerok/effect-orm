@@ -5,6 +5,8 @@ import type { DriverError } from '#errors/errors.js';
 
 import { SqliteDialect } from '#dialect.js';
 import { Driver } from '#drivers/driver.js';
+import { ConstraintCheckNotNullError } from '#errors/errors.js';
+import { ConstraintCheckError } from '#errors/errors.js';
 import { UniqueViolationError } from '#errors/errors.js';
 import { ForeignKeyViolationError } from '#errors/errors.js';
 import { DbError } from '#errors/errors.js';
@@ -34,6 +36,15 @@ const mapSqliteError = (
   if (code?.startsWith('SQLITE_CONSTRAINT_FOREIGNKEY')) {
     return new ForeignKeyViolationError({ constraint: 'fk_violation', sql });
   }
+
+  if (code?.startsWith('SQLITE_CONSTRAINT_CHECK')) {
+    return new ConstraintCheckError({ sql });
+  }
+
+  if (code?.startsWith('SQLITE_CONSTRAINT_NOTNULL')) {
+    return new ConstraintCheckNotNullError({ sql });
+  }
+
   return new DbError({ cause, sql, params });
 };
 

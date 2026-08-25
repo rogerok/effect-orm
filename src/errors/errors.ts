@@ -29,6 +29,18 @@ export class ForeignKeyViolationError extends Data.TaggedError(
   readonly sql: string;
 }> {}
 
+export class ConstraintCheckError extends Data.TaggedError(
+  'ConstraintCheckError',
+)<{
+  readonly sql: string;
+}> {}
+
+export class ConstraintCheckNotNullError extends Data.TaggedError(
+  'ConstraintCheckNotNullError',
+)<{
+  readonly sql: string;
+}> {}
+
 export class StatementTimeoutError extends Data.TaggedError(
   'StatementTimeoutError',
 )<{
@@ -45,6 +57,8 @@ export class CodecError extends Data.TaggedError('CodecError')<{
 // Driver-level errors. NotFound/TooMany возникают выше, на уровне execute helpers
 export type DriverError =
   | CodecError
+  | ConstraintCheckError
+  | ConstraintCheckNotNullError
   | DbError
   | ForeignKeyViolationError
   | StatementTimeoutError

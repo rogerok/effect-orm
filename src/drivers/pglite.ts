@@ -8,6 +8,10 @@ import type { DriverError } from '#errors/errors.js';
 import { PgDialect } from '#dialect.js';
 import { Driver } from '#drivers/driver.js';
 import {
+  ConstraintCheckError,
+  ConstraintCheckNotNullError,
+} from '#errors/errors.js';
+import {
   ForeignKeyViolationError,
   UniqueViolationError,
 } from '#errors/errors.js';
@@ -29,6 +33,14 @@ const mapPgError = (
 
   if (code === '23503') {
     return new ForeignKeyViolationError({ constraint, sql });
+  }
+
+  if (code === '23514') {
+    return new ConstraintCheckError({ sql });
+  }
+
+  if (code === '23502') {
+    return new ConstraintCheckNotNullError({ sql });
   }
 
   return new DbError({ cause, sql, params });
