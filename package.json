@@ -31,12 +31,16 @@
     "test:watch": "vitest --config vitest.config.ts"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.7",
+    "better-sqlite3": "^13.0.3",
     "effect": "4.0.0-rc.108"
   },
   "devDependencies": {
+    "@effect/sql-pg": "4.0.0-rc.108",
     "@effect/tsgo": "^0.36.4",
     "@effect/vitest": "4.0.0-rc.108",
     "@testcontainers/postgresql": "^12.1.0",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.15.3",
     "@types/pg": "^8.21.0",
     "eslint-plugin-perfectionist": "^5.10.1",
