@@ -27,6 +27,8 @@ const fastDriver = Layer.succeed(
   }),
 );
 
+const query = 'SELECT * FROM users';
+
 const slowDriver = Layer.effect(
   Driver,
   Effect.gen(function* () {
@@ -72,17 +74,14 @@ describe('SlowQueryLogLayer', () => {
     const { loggerLayer, events } = makeLogCollector();
 
     return Effect.gen(function* () {
-      const result = yield* executeSlowQuery(
-        'SELECT * FROM users',
-        slowQueryDuration,
-      );
+      const result = yield* executeSlowQuery(query, slowQueryDuration);
 
       expect(result).toEqual(rawResult);
 
       expect(events).toEqual([
         {
           logLevel: 'Warn',
-          message: ['SELECT * FROM users', slowQueryMs],
+          message: [query, slowQueryMs],
         },
       ]);
     }).pipe(
@@ -98,7 +97,7 @@ describe('SlowQueryLogLayer', () => {
 
     return Effect.gen(function* () {
       const db = yield* Driver;
-      const result = yield* db.executeRaw('SELECT * FROM users', []);
+      const result = yield* db.executeRaw(query, []);
 
       expect(events).toEqual([]);
       expect(result).toEqual(rawResult);
@@ -114,10 +113,7 @@ describe('SlowQueryLogLayer', () => {
     const { loggerLayer, events } = makeLogCollector();
 
     return Effect.gen(function* () {
-      const result = yield* executeSlowQuery(
-        'SELECT * FROM users',
-        slowQueryDuration,
-      );
+      const result = yield* executeSlowQuery(query, slowQueryDuration);
 
       expect(events).toEqual([]);
       expect(result).toEqual(rawResult);
