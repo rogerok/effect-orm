@@ -1,6 +1,7 @@
 import { Effect, Layer } from 'effect';
 
-import { TracingLayer } from '#drivers/drivder-tracing.js';
+import { MetricLayer } from '#drivers/driver-metric.js';
+import { TracingLayer } from '#drivers/driver-tracing.js';
 import { Driver } from '#drivers/driver.js';
 
 import * as PGliteDriver from '../drivers/pglite.js';
@@ -37,13 +38,15 @@ const program = Effect.gen(function* () {
   ),
 );
 
-// Tracing layer оборачивает базовый drivers. Меняется только нижний
-// слой, бизнес-код выше не знает, на каком движке исполняется.
-
-const sqliteLayer = TracingLayer.pipe(
-  Layer.provide(SqliteDriver.layer({ path: ':memory' })),
+const sqliteLayer = MetricLayer.pipe(
+  Layer.provide(
+    TracingLayer.pipe(Layer.provide(SqliteDriver.layer({ path: ':memory' }))),
+  ),
 );
-const pgLayer = TracingLayer.pipe(Layer.provide(PGliteDriver.layer({})));
+
+const pgLayer = MetricLayer.pipe(
+  Layer.provide(TracingLayer.pipe(Layer.provide(PGliteDriver.layer({})))),
+);
 
 await Effect.runPromise(
   Effect.scoped(program).pipe(Effect.provide(sqliteLayer)),
