@@ -1,18 +1,18 @@
 import { describe, it } from '@effect/vitest';
-import { type Duration, Effect, Fiber, Layer, Logger } from 'effect';
+import { Duration, Effect, Fiber, Layer, Logger } from 'effect';
 import { TestClock } from 'effect/testing';
 
 import { SqliteDialect } from '#dialect.js';
-import { SlowQueryLogLayer } from '#drivers/driver-slow-query-log.js';
 import { Driver } from '#drivers/driver.js';
+import { SlowQueryLogLayer } from '#drivers/slow-query-log.js';
 
 interface LogEvent {
   readonly logLevel: string;
   readonly message: unknown;
 }
 
-const slowQueryDuration = '101 millis';
 const slowQueryMs = 101;
+const slowQueryDuration = Duration.millis(slowQueryMs);
 
 const rawResult = {
   affectedRows: 0,

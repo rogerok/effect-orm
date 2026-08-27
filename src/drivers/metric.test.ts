@@ -3,8 +3,8 @@ import { Effect, Fiber, Layer, Metric } from 'effect';
 import { TestClock } from 'effect/testing';
 
 import { SqliteDialect } from '#dialect.js';
-import { MetricLayer } from '#drivers/driver-metric.js';
 import { Driver } from '#drivers/driver.js';
+import { MetricLayer } from '#drivers/metric.js';
 
 const driver = Layer.succeed(
   Driver,

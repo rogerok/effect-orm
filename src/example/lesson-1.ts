@@ -1,8 +1,8 @@
 import { Effect, Layer } from 'effect';
 
-import { MetricLayer } from '#drivers/driver-metric.js';
-import { TracingLayer } from '#drivers/driver-tracing.js';
 import { Driver } from '#drivers/driver.js';
+import { MetricLayer } from '#drivers/metric.js';
+import { TracingLayer } from '#drivers/tracing.js';
 
 import * as PGliteDriver from '../drivers/pglite.js';
 import * as SqliteDriver from '../drivers/sqlite.js';
