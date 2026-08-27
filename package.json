@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.7",
+    "@libsql/client": "^0.17.4",
     "better-sqlite3": "^13.0.3",
     "effect": "4.0.0-rc.108"
   },

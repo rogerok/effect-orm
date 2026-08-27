@@ -2,6 +2,7 @@ import { describe, it } from '@effect/vitest';
 import { Effect } from 'effect';
 
 import { Driver } from '#drivers/driver.js';
+import * as LibsqlDriver from '#drivers/libsql.js';
 import * as PGliteDriver from '#drivers/pglite.js';
 import * as SqliteDriver from '#drivers/sqlite.js';
 import {
@@ -11,6 +12,9 @@ import {
 
 const pgLayer = Effect.provide(PGliteDriver.layer({}));
 const sqliteLayer = Effect.provide(SqliteDriver.layer({ path: ':memory' }));
+const libsqlLayer = Effect.provide(
+  LibsqlDriver.layer({ url: 'file::memory:' }),
+);
 
 const programConstraintCheckError = Effect.gen(function* () {
   const driver = yield* Driver;
@@ -57,5 +61,15 @@ describe('E1.2 Sqlite', () => {
 
   it.effect('ConstraintCheckNotNullError', () =>
     programConstraintCheckNotNullError.pipe(sqliteLayer),
+  );
+});
+
+describe('E1.2 Libsql', () => {
+  it.effect('ConstraintCheckError', () =>
+    programConstraintCheckError.pipe(libsqlLayer),
+  );
+
+  it.effect('ConstraintCheckNotNullError', () =>
+    programConstraintCheckNotNullError.pipe(libsqlLayer),
   );
 });
