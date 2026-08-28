@@ -1,7 +1,7 @@
 import type { PGliteOptions } from '@electric-sql/pglite';
 
 import { PGlite } from '@electric-sql/pglite';
-import { Effect, Layer } from 'effect';
+import { Effect, Layer, Pool } from 'effect';
 
 import type { DriverError } from '#errors/errors.js';
 
@@ -73,3 +73,6 @@ const make = (options: PGliteOptions = {}) =>
 
 export const layer = (options?: PGliteOptions) =>
   Layer.effect(Driver, make(options));
+
+export const makePool = (size = 1, options?: PGliteOptions) =>
+  Pool.make({ acquire: make(options), size });
