@@ -7,6 +7,7 @@ import type { DriverError } from '#errors/errors.js';
 
 import { PgDialect } from '#dialect.js';
 import { Driver } from '#drivers/driver.js';
+import { ConnectionFailureError } from '#errors/errors.js';
 import {
   ConstraintCheckError,
   ConstraintCheckNotNullError,
@@ -41,6 +42,10 @@ const mapPgError = (
 
   if (code === '23502') {
     return new ConstraintCheckNotNullError({ sql });
+  }
+
+  if (code === '08006') {
+    return new ConnectionFailureError({ cause, params, sql });
   }
 
   return new DbError({ cause, sql, params });

@@ -11,7 +11,7 @@ import {
 } from '#errors/errors.js';
 
 const pgLayer = Effect.provide(PGliteDriver.layer({}));
-const sqliteLayer = Effect.provide(SqliteDriver.layer({ path: ':memory' }));
+const sqliteLayer = Effect.provide(SqliteDriver.layer({ path: ':memory:' }));
 const libsqlLayer = Effect.provide(
   LibsqlDriver.layer({ url: 'file::memory:' }),
 );
@@ -23,7 +23,7 @@ const programConstraintCheckError = Effect.gen(function* () {
   const tableId = id('products');
 
   yield* driver.executeRaw(
-    `CREATE TABLE ${tableId} (${id('id')} ${driver.dialect.mapColumnType('integer', {})} PRIMARY KEY, ${id('price')} ${driver.dialect.mapColumnType('integer', {})}, CHECK (${id('price')} >= 0))`,
+    `CREATE TABLE IF NOT EXISTS ${tableId} (${id('id')} ${driver.dialect.mapColumnType('integer', {})} PRIMARY KEY, ${id('price')} ${driver.dialect.mapColumnType('integer', {})}, CHECK (${id('price')} >= 0))`,
     [],
   );
   const result = yield* Effect.result(
@@ -44,7 +44,7 @@ const programConstraintCheckNotNullError = Effect.gen(function* () {
   const tableId = id('products');
 
   yield* driver.executeRaw(
-    `CREATE TABLE ${tableId} (${id('id')} ${driver.dialect.mapColumnType('integer', {})} PRIMARY KEY, ${id('price')} ${driver.dialect.mapColumnType('integer', {})} NOT NULL)`,
+    `CREATE TABLE IF NOT EXISTS ${tableId} (${id('id')} ${driver.dialect.mapColumnType('integer', {})} PRIMARY KEY, ${id('price')} ${driver.dialect.mapColumnType('integer', {})} NOT NULL)`,
     [],
   );
   const result = yield* Effect.result(

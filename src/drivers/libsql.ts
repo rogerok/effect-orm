@@ -5,6 +5,7 @@ import type { DriverError } from '#errors/errors.js';
 
 import { SqliteDialect } from '#dialect.js';
 import { Driver } from '#drivers/driver.js';
+import { DatabaseBusyError } from '#errors/errors.js';
 import {
   ConstraintCheckError,
   ConstraintCheckNotNullError,
@@ -47,6 +48,10 @@ const mapLibsqlError = (
 
   if (code?.startsWith('SQLITE_CONSTRAINT_NOTNULL')) {
     return new ConstraintCheckNotNullError({ sql });
+  }
+
+  if (code === 'SQLITE_BUSY') {
+    return new DatabaseBusyError({ sql, params, cause });
   }
 
   return new DbError({ cause, sql, params });

@@ -5,6 +5,7 @@ import type { DriverError } from '#errors/errors.js';
 
 import { SqliteDialect } from '#dialect.js';
 import { Driver } from '#drivers/driver.js';
+import { DatabaseBusyError } from '#errors/errors.js';
 import { ConstraintCheckNotNullError } from '#errors/errors.js';
 import { ConstraintCheckError } from '#errors/errors.js';
 import { UniqueViolationError } from '#errors/errors.js';
@@ -33,6 +34,7 @@ const mapSqliteError = (
       msg.match(/UNIQUE constraint failed: (.+)$/)?.[1] ?? 'unknown';
     return new UniqueViolationError({ constraint, sql });
   }
+
   if (code?.startsWith('SQLITE_CONSTRAINT_FOREIGNKEY')) {
     return new ForeignKeyViolationError({ constraint: 'fk_violation', sql });
   }
@@ -45,17 +47,23 @@ const mapSqliteError = (
     return new ConstraintCheckNotNullError({ sql });
   }
 
+  if (code === 'SQLITE_BUSY') {
+    return new DatabaseBusyError({ sql, params, cause });
+  }
+
   return new DbError({ cause, sql, params });
 };
 
-const make = (options: SqliteOptions) =>
+const make = ({ readonly = false, path, enableForeignKeys }: SqliteOptions) =>
   Effect.gen(function* () {
     const db = yield* Effect.acquireRelease(
       Effect.try({
         try: () => {
-          const instance = new Database();
+          const instance = new Database(path, {
+            readonly,
+          });
 
-          if (options.enableForeignKeys) {
+          if (enableForeignKeys) {
             instance.pragma('foreign_keys = ON');
           }
 

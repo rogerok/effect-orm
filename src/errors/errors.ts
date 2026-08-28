@@ -48,6 +48,20 @@ export class StatementTimeoutError extends Data.TaggedError(
   readonly timeoutMs: number;
 }> {}
 
+export class ConnectionFailureError extends Data.TaggedError(
+  'ConnectionFailureError',
+)<{
+  readonly cause: unknown;
+  readonly params: ReadonlyArray<unknown>;
+  readonly sql: string;
+}> {}
+
+export class DatabaseBusyError extends Data.TaggedError('DatabaseBusyError')<{
+  readonly cause: unknown;
+  readonly params: ReadonlyArray<unknown>;
+  readonly sql: string;
+}> {}
+
 export class CodecError extends Data.TaggedError('CodecError')<{
   readonly cause: unknown;
   readonly column: string;
@@ -57,8 +71,10 @@ export class CodecError extends Data.TaggedError('CodecError')<{
 // Driver-level errors. NotFound/TooMany возникают выше, на уровне execute helpers
 export type DriverError =
   | CodecError
+  | ConnectionFailureError
   | ConstraintCheckError
   | ConstraintCheckNotNullError
+  | DatabaseBusyError
   | DbError
   | ForeignKeyViolationError
   | StatementTimeoutError
