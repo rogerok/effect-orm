@@ -3,14 +3,6 @@ import { Effect, Layer, Metric } from 'effect';
 import { Driver } from '#drivers/driver.js';
 import { getOperation } from '#helpers/operation.js';
 
-/*
-E1.4. Реализовать MetricLayer поверх Driver,
- который ведёт три метрики через модуль
-Metric: counter db.queries.total{op,dialect}, +
-histogram db.query.duration_ms, gauge db.connections.active.
-Подключи как ещё один Layer-decorator поверх TracingLayer.
- */
-
 const queryTotalCounter = Metric.counter('db.queries.total', {
   incremental: true,
 }).pipe(Metric.withConstantInput(1));

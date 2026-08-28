@@ -4,7 +4,7 @@ import { TestClock } from 'effect/testing';
 
 import { SqliteDialect } from '#dialect.js';
 import { Driver } from '#drivers/driver.js';
-import { MetricLayer } from '#drivers/metric.js';
+import { MetricLayer } from '#layers/metric.js';
 
 const driver = Layer.succeed(
   Driver,

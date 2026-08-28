@@ -4,8 +4,8 @@ import { TestClock } from 'effect/testing';
 
 import { SqliteDialect } from '#dialect.js';
 import { Driver } from '#drivers/driver.js';
-import { StatementTimeoutLayer } from '#drivers/statement-timeout.js';
 import { StatementTimeoutError } from '#errors/errors.js';
+import { StatementTimeoutLayer } from '#layers/statement-timeout.js';
 
 const timeoutMs = 15;
 const timeoutDuration = Duration.millis(timeoutMs);

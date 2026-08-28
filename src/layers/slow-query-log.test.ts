@@ -4,7 +4,7 @@ import { TestClock } from 'effect/testing';
 
 import { SqliteDialect } from '#dialect.js';
 import { Driver } from '#drivers/driver.js';
-import { SlowQueryLogLayer } from '#drivers/slow-query-log.js';
+import { SlowQueryLogLayer } from '#layers/slow-query-log.js';
 
 interface LogEvent {
   readonly logLevel: string;
