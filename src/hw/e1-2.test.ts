@@ -18,12 +18,19 @@ const libsqlLayer = Effect.provide(
 
 const programConstraintCheckError = Effect.gen(function* () {
   const driver = yield* Driver;
+  const id = driver.dialect.quoteIdentifier;
+  const ph = driver.dialect.placeholder;
+  const tableId = id('products');
+
   yield* driver.executeRaw(
-    `CREATE TABLE products (id INTEGER PRIMARY KEY, price INTEGER, CHECK (price >= 0))`,
+    `CREATE TABLE ${tableId} (${id('id')} ${driver.dialect.mapColumnType('integer', {})} PRIMARY KEY, ${id('price')} ${driver.dialect.mapColumnType('integer', {})}, CHECK (${id('price')} >= 0))`,
     [],
   );
   const result = yield* Effect.result(
-    driver.executeRaw(`INSERT INTO products (id, price) VALUES (1, -10)`, []),
+    driver.executeRaw(
+      `INSERT INTO ${tableId} (${id('id')}, ${id('price')}) VALUES (${ph(1)}, ${ph(2)})`,
+      [1, -10],
+    ),
   );
   expect(result._tag).toBe('Failure');
   if (result._tag === 'Failure')
@@ -32,12 +39,19 @@ const programConstraintCheckError = Effect.gen(function* () {
 
 const programConstraintCheckNotNullError = Effect.gen(function* () {
   const driver = yield* Driver;
+  const id = driver.dialect.quoteIdentifier;
+  const ph = driver.dialect.placeholder;
+  const tableId = id('products');
+
   yield* driver.executeRaw(
-    `CREATE TABLE products (id INTEGER PRIMARY KEY, price INTEGER NOT NULL)`,
+    `CREATE TABLE ${tableId} (${id('id')} ${driver.dialect.mapColumnType('integer', {})} PRIMARY KEY, ${id('price')} ${driver.dialect.mapColumnType('integer', {})} NOT NULL)`,
     [],
   );
   const result = yield* Effect.result(
-    driver.executeRaw(`INSERT INTO products (id) VALUES (1)`, []),
+    driver.executeRaw(
+      `INSERT INTO ${tableId} (${id('id')}) VALUES (${ph(1)})`,
+      [1],
+    ),
   );
   expect(result._tag).toBe('Failure');
   if (result._tag === 'Failure')
