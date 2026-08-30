@@ -63,12 +63,21 @@ describe('StatementTimeoutLayer', () => {
         throw new Error('Expect failure');
       }
 
-      expect(result.failure).toBeInstanceOf(StatementTimeoutError);
-      expect(result.failure).toMatchObject({
-        _tag: 'StatementTimeoutError',
-        sql: query,
-        timeoutMs,
-      });
+      // TODO: rewrite with matcher
+      expect(result).toStrictEqual(
+        Result.fail({
+          _tag: 'StatementTimeoutError',
+          sql: query,
+          timeoutMs,
+          message: '',
+        }),
+      );
+      // expect(result.failure).toBeInstanceOf(StatementTimeoutError);
+      // expect(result.failure).toMatchObject({
+      //   _tag: 'StatementTimeoutError',
+      //   sql: query,
+      //   timeoutMs,
+      // });
     }).pipe(
       Effect.provide([
         StatementTimeoutLayer({ timeoutMs }).pipe(Layer.provide(slowDriver)),

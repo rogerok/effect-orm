@@ -103,6 +103,7 @@ describe('RetryLayer', () => {
 
       const result = yield* Effect.result(program);
 
+      // TODO: rewrite to matching for vitest
       if (Result.isSuccess(result)) {
         throw new Error('Expect failure');
       }
