@@ -78,3 +78,58 @@ expect.extend({
     };
   },
 });
+
+expect.extend({
+  toBeResultSuccess(received: unknown, expected: unknown) {
+    if (!Result.isResult(received)) {
+      return {
+        pass: false,
+        actual: received,
+        expected: 'Result.Success',
+        message: () =>
+          [
+            'Expected received value to be a Result',
+            `Received: ${this.utils.printReceived(received)}`,
+          ].join('\n'),
+      };
+    }
+
+    if (!Result.isSuccess(received)) {
+      return {
+        pass: false,
+        actual: received,
+        expected: 'Result.Success',
+        message: () =>
+          [
+            'Expected Result.Success, but received Result.Failure',
+            `Received: ${this.utils.printReceived(received)}`,
+          ].join('\n'),
+      };
+    }
+
+    const pass = this.equals(received.success, expected, [
+      ...this.customTesters,
+      this.utils.iterableEquality,
+    ]);
+
+    return {
+      pass,
+      actual: received.success,
+      expected: expected,
+      message: () =>
+        pass
+          ? [
+              'Expected Result success not to match:',
+              this.utils.printExpected(expected),
+              'Received:',
+              this.utils.printReceived(received.success),
+            ].join('\n')
+          : [
+              'Expected Result success to match:',
+              this.utils.printExpected(expected),
+              'Received:',
+              this.utils.printReceived(received.success),
+            ].join('\n'),
+    };
+  },
+});

@@ -64,13 +64,8 @@ describe('RetryLayer', () => {
 
       const result = yield* Effect.result(program);
 
-      if (Result.isSuccess(result)) {
-        throw new Error('Expect failure');
-      }
+      expect(result).toBeResultFailure(ConnectionFailureError, err);
 
-      expect(Result.isFailure(result)).toBe(true);
-      expect(result.failure).toMatchObject(err);
-      expect(result.failure).toBeInstanceOf(ConnectionFailureError);
       expect(attempts).toBe(3);
     }),
   );
@@ -103,14 +98,9 @@ describe('RetryLayer', () => {
 
       const result = yield* Effect.result(program);
 
-      // TODO: rewrite to matching for vitest
-      if (Result.isSuccess(result)) {
-        throw new Error('Expect failure');
-      }
+      expect(result).toBeResultFailure(DatabaseBusyError, err);
 
       expect(Result.isFailure(result)).toBe(true);
-      expect(result.failure).toMatchObject(err);
-      expect(result.failure).toBeInstanceOf(DatabaseBusyError);
       expect(attempts).toBe(3);
     }),
   );
@@ -142,13 +132,7 @@ describe('RetryLayer', () => {
 
       const result = yield* Effect.result(program);
 
-      if (Result.isSuccess(result)) {
-        throw new Error('Expect failure');
-      }
-
-      expect(result.failure).toBeInstanceOf(UniqueViolationError);
-      expect(result.failure).toMatchObject(err);
-      expect(Result.isFailure(result)).toBe(true);
+      expect(result).toBeResultFailure(UniqueViolationError, err);
       expect(attempts).toBe(1);
     }),
   );
