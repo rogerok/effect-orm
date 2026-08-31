@@ -1,5 +1,5 @@
 import { describe, it } from '@effect/vitest';
-import { Effect, Result } from 'effect';
+import { Effect } from 'effect';
 
 import { Driver } from '#drivers/driver.js';
 import * as LibsqlDriver from '#drivers/libsql.js';
@@ -58,14 +58,7 @@ describe('Libsql Driver', () => {
       yield* db.executeRaw(insertSql, ['title']);
       const result = yield* Effect.result(db.executeRaw(insertSql, ['title']));
 
-      expect(Result.isFailure(result)).toBe(true);
-
-      if (Result.isSuccess(result)) {
-        throw new Error('Expect failure');
-      }
-
-      expect(result.failure).toBeInstanceOf(UniqueViolationError);
-      expect(result.failure).toMatchObject({
+      expect(result).toBeResultFailure(UniqueViolationError, {
         _tag: 'UniqueViolationError',
         sql: insertSql,
         constraint: 'articles.title',
