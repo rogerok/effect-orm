@@ -1,5 +1,5 @@
 import { describe, it } from '@effect/vitest';
-import { Effect, Layer, Result } from 'effect';
+import { Effect, Layer } from 'effect';
 import { expect } from 'vitest';
 
 import type { Dialect } from '#dialect.js';
@@ -64,7 +64,8 @@ describe('RetryLayer', () => {
 
       const result = yield* Effect.result(program);
 
-      expect(result).toBeResultFailure(ConnectionFailureError, err);
+      expect(result).toBeFailure(ConnectionFailureError);
+      expect(result).toEqualFailure(new ConnectionFailureError(err));
 
       expect(attempts).toBe(3);
     }),
@@ -98,9 +99,8 @@ describe('RetryLayer', () => {
 
       const result = yield* Effect.result(program);
 
-      expect(result).toBeResultFailure(DatabaseBusyError, err);
-
-      expect(Result.isFailure(result)).toBe(true);
+      expect(result).toBeFailure(DatabaseBusyError);
+      expect(result).toEqualFailure(new DatabaseBusyError(err));
       expect(attempts).toBe(3);
     }),
   );
@@ -132,7 +132,8 @@ describe('RetryLayer', () => {
 
       const result = yield* Effect.result(program);
 
-      expect(result).toBeResultFailure(UniqueViolationError, err);
+      expect(result).toBeFailure(UniqueViolationError);
+      expect(result).toEqualFailure(new UniqueViolationError(err));
       expect(attempts).toBe(1);
     }),
   );

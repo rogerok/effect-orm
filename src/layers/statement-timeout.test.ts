@@ -1,5 +1,5 @@
 import { describe, it } from '@effect/vitest';
-import { Duration, Effect, Fiber, Layer, Result } from 'effect';
+import { Duration, Effect, Fiber, Layer } from 'effect';
 import { TestClock } from 'effect/testing';
 
 import { SqliteDialect } from '#dialect.js';
@@ -59,8 +59,9 @@ describe('StatementTimeoutLayer', () => {
         executeSlowQuery(query, timeoutDuration),
       );
 
-      expect(result).toStrictEqual(
-        Result.fail(new StatementTimeoutError({ sql: query, timeoutMs })),
+      expect(result).toBeFailure(StatementTimeoutError);
+      expect(result).toEqualFailure(
+        new StatementTimeoutError({ sql: query, timeoutMs }),
       );
     }).pipe(
       Effect.provide([

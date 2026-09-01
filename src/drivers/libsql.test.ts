@@ -1,6 +1,7 @@
 import { describe, it } from '@effect/vitest';
 import { Effect } from 'effect';
 
+import { expectFailure } from '#config/result-matchers.js';
 import { Driver } from '#drivers/driver.js';
 import * as LibsqlDriver from '#drivers/libsql.js';
 import { UniqueViolationError } from '#errors/errors.js';
@@ -58,8 +59,8 @@ describe('Libsql Driver', () => {
       yield* db.executeRaw(insertSql, ['title']);
       const result = yield* Effect.result(db.executeRaw(insertSql, ['title']));
 
-      expect(result).toBeResultFailure(UniqueViolationError, {
-        _tag: 'UniqueViolationError',
+      expect(result).toBeFailure(UniqueViolationError);
+      expect(expectFailure(result)).toMatchObject({
         sql: insertSql,
         constraint: 'articles.title',
       });
