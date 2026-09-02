@@ -91,6 +91,11 @@ const compilePredicate = (pred: Predicate, ctx: Ctx): string =>
       'Not',
       ({ pred: inner }) => `NOT (${compilePredicate(inner, ctx)})`,
     ),
+    Match.tag(
+      'Between',
+      ({ expr, min, max }) =>
+        `${compileExpr(expr, ctx)} BETWEEN ${compileExpr(min, ctx)} AND ${compileExpr(max, ctx)}`,
+    ),
     Match.exhaustive,
   );
 

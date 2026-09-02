@@ -66,3 +66,10 @@ export const or = (...preds: Predicate[]): Predicate => ({
   preds,
 });
 export const not = (p: Predicate): Predicate => ({ _tag: 'Not', pred: p });
+
+export const between = (expr: Expr, min: Expr, max: Expr): Predicate => ({
+  _tag: 'Between',
+  min,
+  max,
+  expr,
+});
