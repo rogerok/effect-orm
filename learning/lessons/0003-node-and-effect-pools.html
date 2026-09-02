@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Урок 0003 — пулы Node.js и Effect</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+  <script defer src="../assets/interactive-components.js"></script>
+</head>
+<body>
+<main>
+  <article>
+    <header>
+      <p class="eyebrow">Урок 0003 · 22 минуты · экосистема</p>
+      <h1>«Pool в Node» — не один механизм</h1>
+      <p class="lede">Разделим event loop, libuv thread pool, Worker pool, HTTP socket pool, PostgreSQL connection pool и Effect Pool по физическому ресурсу и протоколу выдачи.</p>
+      <p class="meta"><a href="0002-effect-pool-internals.html">← Pool изнутри</a> · <a href="../references/effect-pool.html">Справочник ↗</a></p>
+    </header>
+
+    <h2>1. Сначала убираем ложную модель</h2>
+    <div class="panel warning">
+      <strong>Event loop — не pool.</strong> Это цикл диспетчеризации событий и callback на основном JavaScript-потоке. Наличие асинхронного API не означает, что работа выполняется в «пуле Node».
+    </div>
+
+    <p>Дальнейшая судьба операции зависит от её природы:</p>
+    <ul>
+      <li>сетевой I/O обычно ожидается через неблокирующие механизмы ОС и event loop;</li>
+      <li>часть API, для которых нет подходящего асинхронного системного вызова, Node отправляет в libuv thread pool;</li>
+      <li>CPU-intensive JavaScript можно явно отправить в <code>worker_threads</code>;</li>
+      <li>HTTP Agent и database driver управляют собственными пулами sockets или clients поверх runtime.</li>
+    </ul>
+
+    <h2>2. Карта пулов</h2>
+    <dl class="assignment-map">
+      <dt>libuv thread pool</dt>
+      <dd><strong>Ресурс:</strong> native threads. <strong>Очередь:</strong> работы <code>fs</code>, часть <code>crypto</code>, <code>dns.lookup</code>, <code>zlib</code>. Lease скрыт внутри runtime.</dd>
+      <dt>Worker pool</dt>
+      <dd><strong>Ресурс:</strong> <code>Worker</code> с отдельным V8 isolate. <strong>Очередь:</strong> CPU-задачи приложения. Pool строит приложение или библиотека.</dd>
+      <dt><code>http.Agent</code></dt>
+      <dd><strong>Ресурс:</strong> TCP/TLS sockets, сгруппированные по host/port. <strong>Очередь:</strong> HTTP requests сверх <code>maxSockets</code>.</dd>
+      <dt><code>pg.Pool</code></dt>
+      <dd><strong>Ресурс:</strong> PostgreSQL clients/sessions. <strong>Очередь:</strong> <code>connect()</code> или <code>query()</code>, когда нет idle client и достигнут <code>max</code>.</dd>
+      <dt>Effect <code>Pool&lt;A, E&gt;</code></dt>
+      <dd><strong>Ресурс:</strong> любое scoped-значение <code>A</code>. <strong>Очередь:</strong> fibers, выполняющие <code>Pool.get</code>, когда разрешения заняты.</dd>
+      <dt><code>Buffer</code> pool</dt>
+      <dd><strong>Ресурс:</strong> заранее выделенный slab памяти. Малые Buffer получают slices; явного checkout/return нет. Это родственная оптимизация allocation, но другой контракт.</dd>
+    </dl>
+
+    <h2>3. Встроенный libuv thread pool</h2>
+    <p>Node документирует фиксированный libuv thread pool для API, построенных поверх синхронных системных операций: почти все async <code>fs</code>, некоторые <code>crypto</code>, <code>dns.lookup</code> и <code>zlib</code>. Текущий default — 4; размер задаётся <code>UV_THREADPOOL_SIZE</code> до инициализации runtime.<sup><a href="https://nodejs.org/docs/latest-v25.x/api/cli.html#uv_threadpool_sizesize">источник</a></sup></p>
+
+    <pre><code>100 × fs.readFile(...)
+        │
+        ▼
+  очередь libuv work
+        │
+        ├── thread 1 ── task
+        ├── thread 2 ── task
+        ├── thread 3 ── task
+        └── thread 4 ── task
+
+96 работ ожидают не JavaScript connection,
+а свободный native worker thread.</code></pre>
+
+    <p>Это <strong>task pool</strong>: вызывающий код отдаёт работу и получает Promise/callback результата. Он не получает thread в руки и не вызывает <code>release(thread)</code>.</p>
+
+    <div class="panel insight">
+      Долгий <code>pbkdf2</code> способен задержать кажущийся несвязанным <code>fs.readFile</code>, потому что они делят один фиксированный pool. Это contention между типами работ, а не блокировка event loop напрямую.
+    </div>
+
+    <h2>4. <code>worker_threads</code>: pool строится поверх Worker</h2>
+    <p><code>new Worker()</code> создаёт отдельный JavaScript thread и V8 isolate. Node рекомендует для повторяющихся задач использовать pool, потому что стоимость создания Worker может превысить пользу.<sup><a href="https://nodejs.org/docs/latest-v25.x/api/worker_threads.html">источник</a></sup></p>
+
+    <pre><code>submit(job)
+  ├─ idle Worker? ── postMessage(job)
+  ├─ workers &lt; max? ── create Worker → postMessage(job)
+  └─ иначе ── enqueue(job)
+
+Worker сообщает result
+  ├─ есть queued job? ── handoff следующей работе
+  └─ иначе ── Worker становится idle</code></pre>
+
+    <p>Структура совпадает с уроком 0002, но lease скрыт scheduler-ом: ресурсом владеет pool, пользователь видит только задачу.</p>
+
+    <h2>5. <code>http.Agent</code>: pool sockets</h2>
+    <p>Agent поддерживает persistent connections и reuse. При достижении <code>maxSockets</code> дополнительные requests попадают в pending queue. Сокеты разделены по origin; свободный socket другого host не обслужит запрос.<sup><a href="https://nodejs.org/docs/latest-v25.x/api/http.html#class-httpagent">источник</a></sup></p>
+
+    <ul>
+      <li><code>keepAlive</code> решает, оставить ли socket после запроса.</li>
+      <li><code>maxSockets</code> ограничивает active sockets на host.</li>
+      <li><code>maxFreeSockets</code> ограничивает idle sockets.</li>
+      <li><code>scheduling: "lifo" | "fifo"</code> выбирает, какой idle socket переиспользовать.</li>
+      <li>Закрытый сервером idle socket удаляется; следующий request создаёт новый.</li>
+    </ul>
+
+    <p>Здесь pool одновременно амортизирует TCP/TLS setup и ограничивает конкуренцию к endpoint.</p>
+
+    <h2>6. <code>pg.Pool</code>: классический connection pool</h2>
+    <p>Установленный через <code>@effect/sql-pg</code> <code>pg-pool@3.14.0</code> хранит три центральные коллекции:</p>
+    <pre><code>_clients      // все созданные PostgreSQL Client
+_idle         // доступные Client + idle timer
+_pendingQueue // ожидающие connect/query</code></pre>
+
+    <p>В опубликованном исходнике алгоритм конкретен: pending request берётся через <code>shift()</code> — FIFO, а idle client через <code>pop()</code> — LIFO. Если pool не full и idle отсутствует, создаётся новый Client.<sup><a href="https://github.com/brianc/node-postgres/blob/master/packages/pg-pool/index.js">исходник</a></sup></p>
+
+    <pre><code>pool.connect()
+  ├─ idle есть       → checkout idle Client
+  ├─ total &lt; max     → new Client().connect()
+  └─ total == max    → pendingQueue.push(waiter)
+
+client.release(error?)
+  ├─ broken/expired  → client.end(); pulse queue
+  ├─ waiter есть     → следующий checkout
+  └─ иначе           → idle + idle timeout</code></pre>
+
+    <p><code>pool.query()</code> безопасно делает checkout → одну query → release. Для транзакции это неверная граница: все statements обязаны выполняться на одном Client, поэтому нужен явный <code>pool.connect()</code> и release после <code>COMMIT</code>/<code>ROLLBACK</code>.<sup><a href="https://node-postgres.com/features/transactions">источник</a></sup></p>
+
+    <div class="panel warning">
+      <strong>Lease задаётся session semantics, а не удобством API.</strong> Один statement может быть lease для независимой query. Транзакция, temporary table, session <code>SET</code> или advisory lock требуют удерживать тот же connection дольше.
+    </div>
+
+    <h2>7. Effect Pool: generic resource pool для fibers</h2>
+    <p>Effect не знает, является <code>A</code> соединением, Worker или браузером. Он добавляет к общей машине три вещи:</p>
+    <ol>
+      <li><strong>Typed acquire:</strong> <code>Effect&lt;A, E, Scope&gt;</code> описывает создание элемента, ошибку и finalizer.</li>
+      <li><strong>Scoped lease:</strong> <code>Pool.get(pool)</code> требует <code>Scope</code>; finalizer выдачи автоматически возвращает элемент.</li>
+      <li><strong>Fiber suspension:</strong> ожидающий <code>Pool.get</code> приостанавливает fiber, а не блокирует event loop или OS thread.</li>
+    </ol>
+
+    <pre><code>Pool.make({ acquire, size, concurrency? })
+
+fixed capacity = size элементов
+permits = size × concurrency
+
+Pool.get(pool)
+  → взять permit
+  → найти/создать PoolItem
+  → refCount += 1
+  → добавить finalizer в scope выдачи
+
+scope выдачи закрыт
+  → refCount -= 1
+  → вернуть item или уничтожить invalidated
+  → вернуть permit</code></pre>
+
+    <p>Это не аналог libuv thread pool: Effect fiber — лёгкая логическая задача runtime, а элемент <code>A</code> выбираешь ты. В точном исходнике <code>4.0.0-rc.108</code> состояние содержит <code>items</code>, <code>available</code>, <code>invalidated</code>, semaphore, waiters и shutdown flag.<sup><a href="https://unpkg.com/effect@4.0.0-rc.108/src/Pool.ts">источник</a></sup></p>
+
+    <h3>Необычный параметр <code>concurrency</code></h3>
+    <p>Обычный DB connection чаще выдаётся одному borrower, то есть <code>concurrency = 1</code>. Effect разрешает несколько одновременных lease одного item. Это полезно только если сам <code>A</code> поддерживает безопасное совместное использование. Параметр увеличивает permits, но не клонирует физический ресурс.</p>
+
+    <h2>8. Теперь честно про PGlite</h2>
+    <p>Официальная документация: PGlite имеет одно exclusive connection к базе.<sup><a href="https://pglite.dev/docs/">источник</a></sup> Текущий <code>src/drivers/pglite.ts</code> вызывает <code>PGlite.create(options)</code> внутри каждого <code>make(options)</code>.</p>
+
+    <dl class="assignment-map">
+      <dt><code>Pool.make({ acquire: make(options), size: 4 })</code></dt>
+      <dd>До четырёх <strong>отдельных PGlite/WASM instances</strong>. Это не четыре sessions одного PGlite. Для memory-конфигурации их database state раздельно.</dd>
+      <dt>Один PGlite, <code>size: 1</code></dt>
+      <dd>Pool управляет lifecycle и exclusive lease; лишние fibers ждут. Throughput базы не растёт.</dd>
+      <dt>Один PGlite + только лимит операций</dt>
+      <dd>Если acquire/destroy и identity ресурса не нужны, semaphore описывает задачу точнее. Но E1.8 специально требует исследовать <code>Pool.make</code>.</dd>
+      <dt>Будущая транзакция</dt>
+      <dd>Lease должен охватывать всю транзакцию, а не отдельный <code>executeRaw</code>; иначе statements могут попасть на разные pool items или между ними вклинится чужая работа.</dd>
+    </dl>
+
+    <learning-check>
+      <section class="lab-shell" aria-labelledby="node-check-title">
+        <p class="kicker" id="node-check-title">Различи механизмы</p>
+        <p><strong>Сто одновременных <code>fs.readFile()</code> ждут после четырёх долгих <code>crypto.pbkdf2()</code>. Какой pool стал bottleneck?</strong></p>
+        <div class="quiz-options">
+          <button type="button" data-answer="incorrect" data-feedback="Нет. pg.Pool управляет PostgreSQL Client и не исполняет fs/crypto операции.">PostgreSQL connection pool</button>
+          <button type="button" data-answer="correct" data-feedback="Да. fs и pbkdf2 используют общий фиксированный libuv thread pool; долгие crypto tasks занимают его workers.">Встроенный libuv thread pool</button>
+          <button type="button" data-answer="incorrect" data-feedback="Нет. http.Agent управляет TCP sockets для HTTP; fs и pbkdf2 туда не поступают.">HTTP Agent socket pool</button>
+        </div>
+        <p class="quiz-feedback" aria-live="polite">Назови физический ресурс и единицу очереди — ответ получится без запоминания названий.</p>
+      </section>
+    </learning-check>
+
+    <h2>Диагностическая формула</h2>
+    <p>При встрече со словом <em>pool</em> всегда задавай пять вопросов:</p>
+    <ol>
+      <li>Какой <strong>физический ресурс</strong> переиспользуется?</li>
+      <li>Что стоит в <strong>очереди</strong> при исчерпании capacity?</li>
+      <li>Где начинается и заканчивается <strong>lease</strong>?</li>
+      <li>Кто выполняет <strong>health check, destroy и replacement</strong>?</li>
+      <li>Что реально означает <strong>size</strong>: threads, sockets, sessions, WASM instances или permits?</li>
+    </ol>
+
+    <footer>Следующий шаг по E1.8 — не писать <code>Pool.make</code>, а сначала одним абзацем определить физический ресурс и lease boundary текущего <code>DriverImpl</code>. Это определит архитектуру Layer и тест.</footer>
+  </article>
+</main>
+</body>
+</html>

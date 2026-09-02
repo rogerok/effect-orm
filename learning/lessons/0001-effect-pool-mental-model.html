@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Урок 0001 — что именно делает Pool</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+  <script defer src="../assets/interactive-components.js"></script>
+</head>
+<body>
+<main>
+  <article>
+    <header>
+      <p class="eyebrow">Урок 0001 · 12 минут</p>
+      <h1>Pool управляет не массивом, а временем жизни</h1>
+      <p class="lede">После урока ты сможешь по коду определить, что создаёт пул, почему лишний запрос ждёт и почему <code>size: 2</code> для PGlite не равен двум соединениям PostgreSQL.</p>
+      <p class="meta"><a href="#experiment">Сразу к эксперименту ↓</a> · <a href="0002-effect-pool-internals.html">Глубже: механизм Pool →</a> · <a href="../references/effect-pool.html">Открыть справочник ↗</a></p>
+    </header>
+
+    <h2>1. Проблема: цена находится в <em>открытии</em></h2>
+    <p><code>acquireRelease</code> гарантирует корректное открытие и закрытие ресурса. Если каждое действие снова открывает TLS-сессию, процесс или соединение с базой, корректность остаётся, но цена открытия повторяется.</p>
+
+    <div class="panel insight">
+      <p class="kicker">Определение</p>
+      <p><strong>Пул ресурсов (resource pool)</strong> заранее или по спросу держит ограниченное число готовых scoped-ресурсов и выдаёт временное право использования — <em>lease</em>. Когда lease заканчивается, ресурс не закрывается, а возвращается в набор доступных.</p>
+    </div>
+
+    <ol class="timeline">
+      <li><strong>Acquire</strong><span>Открыть ресурс один раз; сохранить finalizer.</span></li>
+      <li><strong>Borrow</strong><span>Выдать свободный экземпляр на одну работу.</span></li>
+      <li><strong>Return</strong><span>Завершить работу; снова разрешить выдачу.</span></li>
+      <li><strong>Release</strong><span>Остановить пул; физически закрыть ресурс.</span></li>
+    </ol>
+
+    <p>Если свободных элементов нет, <code>Pool.get</code> не создаёт бесконечно новые элементы: он ждёт доступности в пределах конфигурации. В Effect это ожидание — часть эффекта, а не ручной цикл. Точная реализация установлена в проекте как <a href="https://unpkg.com/effect@4.0.0-rc.108/src/Pool.ts"><code>effect@4.0.0-rc.108</code></a>.</p>
+
+    <h2 id="experiment">2. Увидь очередь</h2>
+    <p>Запусти четыре запроса с размером 2, затем с размером 1. Следи не только за завершением, но и за переходом <em>ждёт → работает</em>.</p>
+    <pool-lab></pool-lab>
+
+    <div class="panel success">
+      <strong>Наблюдение:</strong> закрытие scope выдачи возвращает <code>Driver</code>. Физическое закрытие ресурса наступит позже — при закрытии внешнего scope пула.
+    </div>
+
+    <h2>3. Два <code>Scope</code>, две разные обязанности</h2>
+    <p>Effect кодирует lifetime (время жизни) в требовании <code>Scope</code>. Официальное руководство формулирует правило прямо: finalizer запускается при закрытии scope — на успехе, ошибке и interruption.<sup><a href="https://www.effect.website/docs/v4/resource-management/scope">источник</a></sup></p>
+
+    <pre><code>// Упрощённые типы для текущего задания
+acquire
+  : Effect&lt;DriverImpl, DriverError, Scope&gt;
+
+Pool.make({ acquire, size })
+  : Effect&lt;Pool&lt;DriverImpl, DriverError&gt;, never, Scope&gt;
+
+Pool.get(pool)
+  : Effect&lt;DriverImpl, DriverError, Scope&gt;</code></pre>
+
+    <dl class="assignment-map">
+      <dt><code>Scope</code> у <code>Pool.make</code></dt>
+      <dd>Жизнь всего пула. Его закрытие запускает finalizer каждого созданного элемента.</dd>
+      <dt><code>Scope</code> у <code>Pool.get</code></dt>
+      <dd>Жизнь одной выдачи. Его закрытие уменьшает счётчик использования и делает элемент доступным.</dd>
+    </dl>
+
+    <div class="panel warning">
+      <strong>Диагностический вопрос:</strong> если сделать <code>Pool.get</code> только один раз при сборке <code>Layer</code>, когда вернётся элемент? Только при остановке Layer. Значит, приложение удерживает один <code>DriverImpl</code>, а остальные элементы пула не участвуют в запросах. Это пул по типу, но не по поведению.
+    </div>
+
+    <h2>4. Привязка к твоему <code>pglite.ts</code></h2>
+    <p>В <a href="../../src/drivers/pglite.ts">текущем драйвере</a> граница ресурса уже видна:</p>
+    <pre><code>make(options)
+  └─ acquireRelease(
+       PGlite.create(options),  // физическое создание
+       instance.close()         // физическое освобождение
+     )
+  └─ Driver.of({ executeRaw })</code></pre>
+
+    <p>Поэтому фраза задания «<code>Pool&lt;DriverImpl&gt;</code> поверх <code>make()</code>» означает: эффект <code>make(options)</code> становится <code>acquire</code> пула. Пул владеет созданными им <code>DriverImpl</code> и через них — экземплярами PGlite.</p>
+
+    <h2>5. Главный поворот: PGlite — single-WASM</h2>
+    <p>Обычный PostgreSQL pool размера 4 обычно держит четыре независимых сетевых соединения к одному серверу. Но документация PGlite говорит: экземпляр имеет <strong>одно exclusive connection</strong> к базе.<sup><a href="https://pglite.dev/docs/">источник</a></sup></p>
+
+    <p>Сопоставь это с текущим <code>make()</code>:</p>
+    <ul>
+      <li>один вызов <code>make(options)</code> вызывает один <code>PGlite.create(options)</code>;</li>
+      <li>два элемента пула требуют два вызова <code>make(options)</code>;</li>
+      <li>значит, <code>size: 2</code> создаёт два экземпляра PGlite/WASM, а не два соединения внутри одного экземпляра;</li>
+      <li>для in-memory конфигурации это, как правило, две разные базы с разным состоянием.</li>
+    </ul>
+
+    <div class="panel insight">
+      <strong>Что тогда даёт пул размера 1?</strong> Единое владение ресурсом, гарантированную финализацию и admission control — управляемую очередь перед единственным экземпляром. Он не повышает SQL throughput (пропускную способность): PGlite всё равно выполняет работу через одно exclusive connection.
+    </div>
+
+    <learning-check>
+      <section class="lab-shell" aria-labelledby="check-title">
+        <p class="kicker" id="check-title">Проверка понимания</p>
+        <p><strong>Текущий <code>make({})</code> передали в <code>Pool.make</code> с <code>size: 2</code>. Что физически создано?</strong></p>
+        <div class="quiz-options">
+          <button type="button" data-answer="incorrect" data-feedback="Нет. Один PGlite не предоставляет два независимых соединения; каждый acquire заново вызывает PGlite.create().">Один WASM, два соединения</button>
+          <button type="button" data-answer="correct" data-feedback="Да. Два acquire создают два PGlite; для memory-конфигурации их состояния не являются общей базой.">Два WASM, две базы</button>
+          <button type="button" data-answer="incorrect" data-feedback="Нет. Pool.make фиксированного размера запускает acquire для элементов; он не создаёт только оболочки без ресурса.">Два Driver, один WASM</button>
+        </div>
+        <p class="quiz-feedback" aria-live="polite">Выбери ответ и объясни себе цепочку от <code>size</code> до <code>PGlite.create()</code>.</p>
+      </section>
+    </learning-check>
+
+    <h2>6. Карта решения E1.8 — без готовой реализации</h2>
+    <dl class="assignment-map">
+      <dt>Ресурс</dt>
+      <dd><code>DriverImpl</code>, который внутри владеет одним PGlite через существующий <code>acquireRelease</code>.</dd>
+      <dt>Acquire</dt>
+      <dd>Существующий <code>make(options)</code>; ошибка создания остаётся типизированной.</dd>
+      <dt>Pool lifetime</dt>
+      <dd>Scope слоя/приложения: пул существует, пока доступен драйвер.</dd>
+      <dt>Lease lifetime</dt>
+      <dd>Нужно выбрать реальную единицу работы в публичном API; иначе элемент можно случайно удерживать весь срок Layer.</dd>
+      <dt>Размер PGlite</dt>
+      <dd>Настраиваемый параметр обязан иметь честную семантику. Значение больше 1 — дополнительные PGlite, не дополнительные соединения одного PGlite.</dd>
+      <dt>Доказательство</dt>
+      <dd>Наблюдаемый тест: ограничение одновременных выдач, ожидание лишнего fiber, возврат после scope и закрытие элементов при остановке пула.</dd>
+    </dl>
+
+    <h2>Первичный источник на 10 минут</h2>
+    <p>Прочитай комментарии и сигнатуры <a href="https://unpkg.com/effect@4.0.0-rc.108/src/Pool.ts"><code>make</code> (около строки 220) и <code>get</code> (около строки 423)</a>. Не читай весь файл. Ответь для каждой функции: какой value она возвращает, какая error возможна и зачем требуется <code>Scope</code>.</p>
+
+    <footer>
+      Это вводный урок. Для состояний, очереди и инвариантов продолжи с <a href="0002-effect-pool-internals.html">«Pool изнутри»</a>, затем сравни <a href="0003-node-and-effect-pools.html">пулы Node.js и Effect</a>. Непонятна любая часть — спроси агента, указав конкретный переход состояния.
+    </footer>
+  </article>
+</main>
+</body>
+</html>

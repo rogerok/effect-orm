@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pool в Effect — краткий справочник</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+</head>
+<body>
+<main>
+  <article>
+    <header>
+      <p class="eyebrow">Справочник · Effect 4.0.0-rc.108</p>
+      <h1>Pool: одна страница</h1>
+      <p class="lede">Что переиспользуется, кто ждёт и какой <code>Scope</code> за что отвечает.</p>
+      <p class="meta"><a href="../lessons/0001-effect-pool-mental-model.html">← Урок 0001</a> · <a href="../lessons/0002-effect-pool-internals.html">Механизм Pool</a> · <a href="../lessons/0003-node-and-effect-pools.html">Пулы Node.js</a></p>
+    </header>
+
+    <h2>Модель</h2>
+    <ol class="timeline">
+      <li><strong>Acquire</strong><span>Создать дорогой ресурс и зарегистрировать finalizer.</span></li>
+      <li><strong>Borrow</strong><span>Выдать свободный элемент одному fiber.</span></li>
+      <li><strong>Return</strong><span>Закрыть scope выдачи; элемент снова свободен.</span></li>
+      <li><strong>Release</strong><span>Закрыть scope пула; запустить finalizer всех элементов.</span></li>
+    </ol>
+
+    <div class="panel insight">
+      <strong>Пул — не коллекция значений.</strong> Это диспетчер ограниченного числа scoped-ресурсов: он хранит их время жизни, выдаёт lease (временное право использования) и создаёт ожидание при исчерпании ёмкости.
+    </div>
+
+    <h2>Внутреннее состояние</h2>
+    <pre><code>phase: open | closing | closed
+resources: Set&lt;A&gt;       // всё созданное
+idle: Collection&lt;A&gt;     // доступные элементы
+borrowed: Set&lt;A&gt;        // активные lease
+creating: number        // async acquire уже зарезервировал capacity
+waiters: Queue&lt;Fiber&gt;   // ждут свободный permit</code></pre>
+
+    <h3>Инварианты</h3>
+    <pre><code>total = idle + borrowed
+total + creating ≤ max
+idle ∩ borrowed = ∅
+checkout → ровно один return или destroy
+closed → total = 0 и waiters = 0</code></pre>
+
+    <h3>Checkout / return</h3>
+    <div class="type-line"><b>Checkout</b><span>Взять idle → иначе создать в пределах max → иначе поставить cancellable waiter.</span></div>
+    <div class="type-line"><b>Return healthy</b><span>Прямой handoff первому waiter; если очереди нет — перевести в idle.</span></div>
+    <div class="type-line"><b>Return broken</b><span>Уничтожить, не переиспользовать; при спросе создать замену.</span></div>
+    <div class="type-line"><b>Shutdown</b><span>Не принимать новые checkout, завершить waiters, закрыть idle, дождаться/пометить borrowed согласно контракту.</span></div>
+
+    <h3>Не путать</h3>
+    <dl class="assignment-map">
+      <dt>Semaphore</dt>
+      <dd>Ограничивает число входов permits; не владеет экземплярами и их finalizer.</dd>
+      <dt>Pool</dt>
+      <dd>Владеет identity ресурсов, их созданием, health, idle lifetime и destroy.</dd>
+      <dt>Cache</dt>
+      <dd>Ищет значения по ключу; lease/return не является главным протоколом.</dd>
+    </dl>
+
+    <h2>Три сигнатуры</h2>
+    <pre><code>acquire
+  : Effect&lt;DriverImpl, DriverError, Scope&gt;
+
+Pool.make({ acquire, size })
+  : Effect&lt;Pool&lt;DriverImpl, DriverError&gt;, never, Scope&gt;
+
+Pool.get(pool)
+  : Effect&lt;DriverImpl, DriverError, Scope&gt;</code></pre>
+    <div class="type-line"><b><code>A</code></b><span>Элемент пула: здесь <code>DriverImpl</code>.</span></div>
+    <div class="type-line"><b><code>E</code></b><span>Ошибка создания элемента; <code>get</code> может её вернуть.</span></div>
+    <div class="type-line"><b><code>Scope</code></b><span>Требование времени жизни. Для <code>make</code> — жизнь пула; для <code>get</code> — жизнь одной выдачи.</span></div>
+
+    <h2>Два scope</h2>
+    <dl class="assignment-map">
+      <dt>Scope пула</dt>
+      <dd>Обычно равен времени жизни <code>Layer</code> или приложения. Закрытие завершает пул и освобождает физические ресурсы.</dd>
+      <dt>Scope выдачи</dt>
+      <dd>Равен одной работе с элементом: запросу или транзакции. Закрытие возвращает элемент в пул, но не закрывает его.</dd>
+    </dl>
+
+    <h2>Фиксированный размер</h2>
+    <ul>
+      <li><code>size</code> задаёт фиксированное число элементов: в реализации этой версии <code>min = max = size</code>.</li>
+      <li><code>concurrency</code> задаёт число одновременных выдач одного элемента; по умолчанию <code>1</code>.</li>
+      <li>Если все разрешения заняты, <code>Pool.get</code> ждёт; это backpressure — давление назад на вызывающий код.</li>
+      <li><code>invalidate(pool, item)</code> исключает именно тот объект по строгому равенству и позволяет создать замену.</li>
+    </ul>
+
+    <h2>Что называют pool в Node.js</h2>
+    <dl class="assignment-map">
+      <dt>libuv thread pool</dt>
+      <dd>Переиспользует native worker threads; в очереди стоят <code>fs</code>, часть <code>crypto</code>, <code>dns.lookup</code>, <code>zlib</code>.</dd>
+      <dt>Worker pool</dt>
+      <dd>Переиспользует <code>worker_threads</code>; в очереди стоят CPU-задачи приложения.</dd>
+      <dt><code>http.Agent</code></dt>
+      <dd>Переиспользует TCP/TLS sockets по host/port; в очереди стоят HTTP requests сверх <code>maxSockets</code>.</dd>
+      <dt><code>pg.Pool</code></dt>
+      <dd>Переиспользует PostgreSQL Client/session; в очереди стоят checkout/query.</dd>
+      <dt>Buffer pool</dt>
+      <dd>Раздаёт slices заранее выделенной памяти; явного lease/return нет.</dd>
+    </dl>
+
+    <h2>PGlite: не обычный connection pool</h2>
+    <dl class="assignment-map">
+      <dt>Сетевой PostgreSQL</dt>
+      <dd><code>size: N</code> обычно означает N независимых серверных соединений и потенциальный параллелизм.</dd>
+      <dt>Один PGlite</dt>
+      <dd>Официально имеет одно exclusive connection. Пул размера 1 может управлять lifetime и admission control, но не добавляет database parallelism.</dd>
+      <dt>Текущий <code>make()</code></dt>
+      <dd>Каждый вызов делает <code>PGlite.create(options)</code>. Поэтому <code>Pool.make({ acquire: make(options), size: N })</code> означает до N экземпляров PGlite/WASM, а не N соединений с одним экземпляром.</dd>
+    </dl>
+
+    <div class="panel warning">
+      <strong>Главная ловушка E1.8:</strong> взять один элемент через <code>Pool.get</code> при сборке <code>Layer</code> и держать его до остановки приложения. Тогда остальные элементы никогда не обслужат запросы; пул существует только формально.
+    </div>
+
+    <h2>Проверка дизайна</h2>
+    <ol>
+      <li>Что именно дорого создаёт <code>acquire</code>?</li>
+      <li>Какая операция является одной выдачей?</li>
+      <li>Где закрывается scope этой выдачи при success, failure и interruption?</li>
+      <li>Что физически означает <code>size &gt; 1</code> для выбранного ресурса?</li>
+      <li>Доказывает ли тест ожидание и последующее переиспользование одного и того же экземпляра?</li>
+    </ol>
+
+    <h2>Источники</h2>
+    <ol>
+      <li><a href="https://unpkg.com/effect@4.0.0-rc.108/src/Pool.ts">Effect 4.0.0-rc.108: исходник Pool</a>.</li>
+      <li><a href="https://www.effect.website/docs/v4/resource-management/scope">Effect v4: Scope и acquireRelease</a>.</li>
+      <li><a href="https://node-postgres.com/features/pooling">node-postgres: connection pooling</a>.</li>
+      <li><a href="https://nodejs.org/docs/latest-v25.x/api/cli.html#uv_threadpool_sizesize">Node.js: libuv thread pool</a>.</li>
+      <li><a href="https://nodejs.org/docs/latest-v25.x/api/http.html#class-httpagent">Node.js: HTTP Agent</a>.</li>
+      <li><a href="https://pglite.dev/docs/">PGlite: single exclusive connection</a>.</li>
+      <li><a href="https://pglite.dev/docs/api">PGlite API</a>.</li>
+    </ol>
+
+    <footer>Версия справочника привязана к зависимостям текущего проекта. При обновлении Effect сначала перепроверь сигнатуры в опубликованном исходнике.</footer>
+  </article>
+</main>
+</body>
+</html>

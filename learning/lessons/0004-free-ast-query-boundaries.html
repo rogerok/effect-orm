@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Урок 0004 — четыре границы запроса</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+  <script defer src="../assets/interactive-components.js"></script>
+</head>
+<body>
+<main>
+  <article>
+    <header>
+      <p class="eyebrow">Урок 0004 · 10 минут · разделы 2.1–2.5</p>
+      <h1>Четыре разных результата одного запроса</h1>
+      <p class="lede">После урока ты сможешь по одной строке кода определить: она строит данные, компилирует их, описывает Effect или действительно выполняет SQL.</p>
+      <p class="meta"><a href="../references/free-ast-query-pipeline.html">Справочник по пайплайну ↗</a></p>
+    </header>
+
+    <h2>1. AST — ещё не SQL</h2>
+    <pre><code>between(col("age", "users"), lit(18), lit(65))</code></pre>
+    <p>Каждый вызов здесь синхронно создаёт обычный объект. Значение описывает условие, но не сравнивает возраст и не знает, существует ли таблица <code>users</code>.</p>
+    <div class="panel insight">
+      <strong>Диагностический вопрос:</strong> можно ли выполнить этот код без базы и драйвера? Если да, перед нами построение данных.
+    </div>
+
+    <h2>2. Compiled — ещё не выполнение</h2>
+    <pre><code>compile(ir, PgDialect)
+// → {
+//   sql: '... "users"."age" BETWEEN $1 AND $2',
+//   params: [18, 65]
+// }</code></pre>
+    <p>Компилятор — интерпретатор AST. Он рекурсивно выбирает SQL-синтаксис, quoting и placeholders. Вызов остаётся чистым: одинаковые <code>ir</code> и <code>dialect</code> дают одинаковый результат без I/O.</p>
+    <p>Внутренний mutable-массив <code>params</code> не нарушает внешнюю чистоту, пока он создаётся на каждый вызов и не наблюдается до возврата результата.</p>
+
+    <h2>3. Effect — описание будущего исполнения</h2>
+    <pre><code>const program = run(ir)
+// Effect&lt;RawResult, DriverError, Driver&gt;</code></pre>
+    <dl class="assignment-map">
+      <dt><code>RawResult</code></dt>
+      <dd>Что программа выдаст при успехе.</dd>
+      <dt><code>DriverError</code></dt>
+      <dd>С какой типизированной ошибкой программа может завершиться.</dd>
+      <dt><code>Driver</code></dt>
+      <dd>Какая зависимость должна присутствовать в Context до запуска.</dd>
+    </dl>
+    <p>Вызов <code>run(ir)</code> создаёт ленивое описание. Тело <code>Effect.gen</code>, компиляция и <code>executeRaw</code> начнут выполняться только после запуска Effect runtime.</p>
+
+    <h2>4. Runtime пересекает границу I/O</h2>
+    <pre><code>const runnable = Effect.provide(program, PgDriverLive)
+const result = await Effect.runPromise(runnable)</code></pre>
+    <ol class="timeline">
+      <li><strong>Runtime начинает Effect</strong><span>До этой точки SQL не компилировался и драйвер не вызывался.</span></li>
+      <li><strong><code>yield* Driver</code></strong><span>Из Context извлекается реализация драйвера и её dialect.</span></li>
+      <li><strong><code>compile(ir, driver.dialect)</code></strong><span>Чистый AST превращается в параметризованный SQL.</span></li>
+      <li><strong><code>yield* driver.executeRaw(...)</code></strong><span>Драйвер выполняет I/O; успех или <code>DriverError</code> возвращается в Effect.</span></li>
+    </ol>
+
+    <learning-check>
+      <section class="lab-shell" aria-labelledby="execution-check">
+        <p class="kicker" id="execution-check">Проверка извлечением из памяти</p>
+        <p><strong>Какая строка впервые допускает реальное обращение к базе?</strong></p>
+        <div class="quiz-options">
+          <button type="button" data-answer="incorrect" data-feedback="Нет. Smart constructor создаёт только узел AST.">Smart constructor выполняет запрос</button>
+          <button type="button" data-answer="incorrect" data-feedback="Нет. Compiler возвращает данные { sql, params } без I/O.">Compiler выполняет запрос сейчас</button>
+          <button type="button" data-answer="correct" data-feedback="Да. Вызов драйвера внутри запущенного Effect пересекает границу I/O.">Driver выполняет запрос позже</button>
+        </div>
+        <p class="quiz-feedback" aria-live="polite">Ответь до нажатия: назови значение, существующее до и после каждой границы.</p>
+      </section>
+    </learning-check>
+
+    <h2>Короткая практика</h2>
+    <p>Закрой код и воспроизведи цепочку четырьмя подписями:</p>
+    <pre><code>________ → ________ → ________ → ________
+обычные данные                реальный I/O</code></pre>
+    <p>Проверь себя по <a href="../references/free-ast-query-pipeline.html">справочнику</a>. Если любая граница остаётся неясной, задай агенту вопрос и укажи две соседние стадии — ответ будет точечным.</p>
+
+    <h2>Первичный источник</h2>
+    <p>Перечитай в сохранённом курсе только <a href="file:///home/vyacheslav/Documents/bat-school/orm/BatSchool%20%C2%B7%20%D0%A1%D0%B2%D0%BE%D1%8F%20ORM%20%D0%BD%D0%B0%20TypeScript%20%2B%20Effect.ts.html#24-%D0%BA%D0%BE%D0%BC%D0%BF%D0%B8%D0%BB%D1%8F%D1%82%D0%BE%D1%80-fold-%D0%BF%D0%BE-ast">2.4 «Компилятор: fold по AST»</a> и следующий раздел 2.5. При чтении помечай каждую строку одним из четырёх результатов: AST, Compiled, Effect или I/O.</p>
+
+    <footer>Диагностика этой границы пройдена. Продолжение: <a href="0005-rebuild-minimal-query-pipeline.html">восстановить минимальный query pipeline с пустого файла</a>.</footer>
+  </article>
+</main>
+</body>
+</html>

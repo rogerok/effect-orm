@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Справочник — Free/AST-пайплайн запросов</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+</head>
+<body>
+<main>
+  <article>
+    <header>
+      <p class="eyebrow">Справочник · разделы 2.1–2.5</p>
+      <h1>От значения AST до выполнения SQL</h1>
+      <p class="lede">Карта четырёх границ: что является данными, что преобразованием, что описанием эффекта и что реальным вводом-выводом.</p>
+    </header>
+
+    <h2>Главный маршрут</h2>
+    <pre><code>smart constructors
+      │ создают
+      ▼
+IR / AST ── compile(ir, dialect) ──▶ { sql, params }
+                                           │
+                                           │ run(ir) описывает
+                                           ▼
+                          Effect&lt;RawResult, DriverError, Driver&gt;
+                                           │
+                                           │ Effect runtime + Driver Layer
+                                           ▼
+                                  driver.executeRaw(...)</code></pre>
+
+    <dl class="assignment-map">
+      <dt>Алгебра</dt>
+      <dd>Словарь языка: <code>Expr</code>, <code>Predicate</code>, statement. Определяет, что можно выразить, но ничего не выполняет.</dd>
+      <dt>Чистый AST</dt>
+      <dd>Readonly runtime-данные с discriminant <code>_tag</code>. Не содержит драйвер, Effect и методы исполнения.</dd>
+      <dt>Smart constructors</dt>
+      <dd>Удобно и единообразно создают корректную форму узлов. Не компилируют и не обращаются к базе.</dd>
+      <dt>Fold-компилятор</dt>
+      <dd>Исчерпывающе обходит AST и возвращает <code>{ sql, params }</code>. Dialect отвечает за quoting и placeholders.</dd>
+      <dt>Effect-helper</dt>
+      <dd>Получает <code>Driver</code> из Context, компилирует IR и описывает вызов <code>executeRaw</code>. Сам вызов <code>run(ir)</code> программу не запускает.</dd>
+    </dl>
+
+    <h2>Инварианты</h2>
+    <ul>
+      <li>Идентификаторы проходят через <code>dialect.quoteIdentifier</code>.</li>
+      <li>Литералы проходят через <code>compileExpr</code> и попадают в <code>params</code>, а не интерполируются в SQL.</li>
+      <li>Порядок рекурсивного обхода определяет порядок placeholders и элементов <code>params</code>.</li>
+      <li><code>Match.exhaustive</code> ловит отсутствующий case, но не доказывает корректность SQL для существующего case.</li>
+      <li>Поведенческий тест сравнивает и точный SQL, и точный массив параметров.</li>
+    </ul>
+
+    <h2>Тип как карта границы</h2>
+    <div class="panel insight">
+      <div class="type-line"><b>compile</b><code>IR × Dialect → Compiled</code></div>
+      <div class="type-line"><b>run</b><code>IR → Effect&lt;RawResult, DriverError, Driver&gt;</code></div>
+    </div>
+    <p>У <code>compile</code> нет ошибки драйвера и требования <code>Driver</code>: это чистое преобразование. У <code>run</code> они видны в типе, потому что программа пересекает границу внешнего мира.</p>
+
+    <h2>Источники</h2>
+    <ul>
+      <li><a href="file:///home/vyacheslav/Documents/bat-school/orm/BatSchool%20%C2%B7%20%D0%A1%D0%B2%D0%BE%D1%8F%20ORM%20%D0%BD%D0%B0%20TypeScript%20%2B%20Effect.ts.html#21-%D0%B0%D0%BB%D0%B3%D0%B5%D0%B1%D1%80%D0%B0-%D1%81%D0%BB%D0%BE%D0%B2%D0%B0%D1%80%D1%8C-%D0%BD%D0%B0%D1%88%D0%B5%D0%B3%D0%BE-%D1%8F%D0%B7%D1%8B%D0%BA%D0%B0-%D0%B7%D0%B0%D0%BF%D1%80%D0%BE%D1%81%D0%BE%D0%B2">Курс, разделы 2.1–2.5</a> — первичный материал миссии.</li>
+      <li><a href="https://www.typescriptlang.org/docs/handbook/2/narrowing.html#discriminated-unions">TypeScript Handbook: Discriminated unions</a>.</li>
+      <li><a href="https://www.effect.website/docs/v4/getting-started/using-generators">Effect v4: Using generators</a>.</li>
+      <li><a href="https://www.effect.website/docs/v4/requirements-management/services">Effect v4: Services</a>.</li>
+    </ul>
+
+    <footer>Этот справочник ограничен разделом 2.5. Типизированный AST и phantom-бренды начинаются в 2.6 и здесь намеренно не рассматриваются.</footer>
+  </article>
+</main>
+</body>
+</html>

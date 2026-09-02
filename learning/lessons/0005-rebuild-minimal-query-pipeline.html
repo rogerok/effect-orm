@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Урок 0005 — восстановить минимальный query pipeline</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+</head>
+<body>
+<main>
+  <article>
+    <header>
+      <p class="eyebrow">Урок 0005 · практика извлечения · разделы 2.1–2.4</p>
+      <h1>Собери минимальный pipeline с пустого файла</h1>
+      <p class="lede">Вводная диагностика уже пройдена. Теперь задача не узнать знакомый код, а воспроизвести его устройство без подсматривания.</p>
+      <p class="meta"><a href="../index.html">← Карта обучения</a> · <a href="../references/free-ast-query-pipeline.html">Справочник — открыть только после попытки ↗</a></p>
+    </header>
+
+    <h2>Наблюдаемый результат</h2>
+    <p>Создай <code>learning/exercises/0001-minimal-select.ts</code>. Программа должна средствами собственного AST описать запрос:</p>
+    <pre><code>выбрать id и name
+из users
+где age больше 18</code></pre>
+    <p>После компиляции PostgreSQL-диалектом результат обязан быть точным:</p>
+    <pre><code>{
+  sql: 'SELECT "id", "name" FROM "users" WHERE "age" &gt; $1',
+  params: [18]
+}</code></pre>
+
+    <h2>Ограничения</h2>
+    <ul>
+      <li>Не открывай <code>src/compiler/</code> до первой работающей попытки.</li>
+      <li>Не импортируй готовые IR, constructors или compiler из проекта.</li>
+      <li>Не используй Effect: этот срез заканчивается на чистом <code>{ sql, params }</code>.</li>
+      <li>Значение <code>18</code> не должно попасть внутрь SQL-строки.</li>
+      <li>Quoting и placeholder должны приходить из маленького объекта dialect, а не быть зашиты по веткам AST.</li>
+      <li>Реализуй только операции, необходимые этому запросу. Не копируй весь язык курса.</li>
+    </ul>
+
+    <h2>Порядок работы</h2>
+    <ol class="timeline">
+      <li><strong>Алгебра</strong><span>Выпиши минимальный словарь операций, встречающихся в целевом запросе.</span></li>
+      <li><strong>AST</strong><span>Определи readonly runtime-данные и discriminant для каждого варианта.</span></li>
+      <li><strong>Smart constructors</strong><span>Собери целевой запрос без ручного написания вложенных object literals в месте использования.</span></li>
+      <li><strong>Compiler</strong><span>Рекурсивно получи SQL и накопи параметры в порядке обхода.</span></li>
+      <li><strong>Проверка</strong><span>Сравни точный объект результата, а не только наличие фрагментов строки.</span></li>
+    </ol>
+
+    <div class="panel warning">
+      <strong>Не исправляй дизайн заранее.</strong> Если первая версия кажется примитивной, это нормально. Сначала получи правильный контракт для одного запроса; затем мы изменим требование и увидим, где дизайн сопротивляется расширению.
+    </div>
+
+    <h2>Самопроверка</h2>
+    <p>В конце файла добавь проверку точного результата через <code>node:assert/strict</code>, затем выполни:</p>
+    <pre><code>pnpm exec tsx learning/exercises/0001-minimal-select.ts
+
+pnpm exec tsc --noEmit --strict \
+  --target ES2022 \
+  --module NodeNext \
+  --moduleResolution NodeNext \
+  learning/exercises/0001-minimal-select.ts</code></pre>
+    <p>Успех означает одновременно: assertion не падает и TypeScript завершается без ошибки.</p>
+
+    <h2>После первой попытки</h2>
+    <p>Только после зелёной проверки сравни свою структуру со <a href="../references/free-ast-query-pipeline.html">справочником</a> и текущим <code>src/compiler</code>. Запиши не различия в названиях, а различия в обязанностях: где строятся данные, где выбирается SQL-синтаксис и где накапливаются параметры.</p>
+
+    <h2>Первичный источник</h2>
+    <p>Если после самостоятельной попытки нужен источник, используй сохранённый курс, разделы 2.1–2.4. Не переходи к 2.5, пока чистый срез не воспроизводится без копирования.</p>
+
+    <footer>Когда файл проходит обе проверки, сообщи результат. Следующее изменение требования проверит расширяемость AST; затем отдельно восстановим Effect-helper из 2.5. Непонятна граница — спроси агента, указав текущие вход и выход функции.</footer>
+  </article>
+</main>
+</body>
+</html>

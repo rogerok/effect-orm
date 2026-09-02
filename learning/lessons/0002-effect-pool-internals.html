@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Урок 0002 — Pool изнутри</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+  <script defer src="../assets/interactive-components.js"></script>
+</head>
+<body>
+<main>
+  <article>
+    <header>
+      <p class="eyebrow">Урок 0002 · 20 минут · механизм</p>
+      <h1>Pool изнутри: состояние, очередь, инварианты</h1>
+      <p class="lede">Не API фреймворка, а минимальная машина, из которой получаются connection pool, worker pool и Effect Pool.</p>
+      <p class="meta"><a href="0001-effect-pool-mental-model.html">← Урок 0001</a> · <a href="0003-node-and-effect-pools.html">Следующий: пулы Node и Effect →</a> · <a href="../references/effect-pool.html">Справочник ↗</a></p>
+    </header>
+
+    <h2>1. Что делает абстракцию пулом</h2>
+    <p>Пул нужен, когда имеются одновременно три свойства:</p>
+    <ol>
+      <li><strong>Экземпляр дорог или ограничен.</strong> Соединение требует handshake; Worker — запуск нового isolate; TCP/TLS socket — установку соединения.</li>
+      <li><strong>Экземпляр можно безопасно переиспользовать.</strong> После одной работы его можно привести в допустимое состояние для следующей.</li>
+      <li><strong>Потребителей больше, чем экземпляров.</strong> Нужна политика: кто получает ресурс сейчас, а кто ждёт.</li>
+    </ol>
+
+    <div class="panel insight">
+      <strong>Полная концепция:</strong> pool = <em>resource ownership</em> + <em>bounded capacity</em> + <em>wait queue</em> + <em>lease protocol</em> + <em>health/lifetime policy</em>. Если оставить только ограничение числа операций, получится semaphore, но не pool.
+    </div>
+
+    <h2>2. Данные, которые хранит минимальный pool</h2>
+    <pre><code>PoolState&lt;R, Waiter&gt; = {
+  phase: "open" | "closing" | "closed"
+  max: number
+  resources: Set&lt;R&gt;       // всё физически созданное
+  idle: Deque&lt;R&gt;          // можно выдать немедленно
+  borrowed: Map&lt;R, Lease&gt; // кому выдано и ещё не возвращено
+  creating: number         // зарезервированные места во время async create
+  waiters: Queue&lt;Waiter&gt;  // запросы, которым не хватило capacity
+}</code></pre>
+
+    <p><code>creating</code> нельзя выбросить как «деталь». Если два вызова одновременно увидят <code>resources.size = max - 1</code> и оба начнут асинхронный <code>create()</code>, лимит будет превышен. Место резервируют <em>до</em> ожидания создания.</p>
+
+    <h3>Основные инварианты</h3>
+    <pre><code>total = idle + borrowed
+
+total + creating ≤ max
+
+idle ∩ borrowed = ∅
+
+успешный checkout → ровно один return или destroy
+
+phase = closed → total = 0 и waiters = 0</code></pre>
+
+    <p>Инвариант — утверждение, которое должно оставаться истинным после любого перехода: успеха, ошибки, timeout, cancellation и shutdown. Именно инварианты отличают рабочий pool от массива с методом <code>pop()</code>.</p>
+
+    <h2>3. Алгоритм checkout</h2>
+    <pre><code>checkout():
+  if phase != open:
+    fail PoolClosed
+
+  if idle not empty:
+    r = removeIdleAccordingToPolicy()
+    borrowed.add(r)
+    return lease(r)
+
+  if total + creating &lt; max:
+    creating += 1               // резервируем capacity до await
+    try:
+      r = await create()
+      resources.add(r)
+      borrowed.add(r)
+      return lease(r)
+    finally:
+      creating -= 1
+
+  waiter = enqueueCancellableWaiter()
+  return await waiter</code></pre>
+
+    <p>Здесь три разных результата одного API: немедленная выдача idle-ресурса, создание нового ресурса или ожидание. Поэтому latency checkout не равна latency бизнес-операции.</p>
+
+    <h2>4. Алгоритм return: прямой handoff</h2>
+    <pre><code>return(r, health):
+  require borrowed contains r
+  borrowed.remove(r)
+
+  if phase != open or health == broken:
+    resources.remove(r)
+    await destroy(r)
+    maybeCreateReplacementForWaiter()
+    return
+
+  if waiters not empty:
+    w = waiters.dequeue()
+    borrowed.add(r)
+    complete(w, lease(r))       // не кладём r в idle
+    return
+
+  idle.push(r)</code></pre>
+
+    <p>Когда очередь не пуста, хороший pool обычно передаёт возвращённый ресурс следующему waiter напрямую. Промежуточный переход через <code>idle</code> создаёт лишнее состояние и окно для несправедливого перехвата.</p>
+
+    <pool-machine></pool-machine>
+
+    <div class="panel success">
+      <strong>Мини-эксперимент:</strong> нажми «Новый checkout» три раза при <code>max = 2</code>, затем «Вернуть первый». Третий запрос должен получить тот же ресурс прямым handoff; <code>idle</code> останется равен нулю.
+    </div>
+
+    <h2>5. Pool ограничивает очередь, но не ускоряет ресурс</h2>
+    <p>Пусть независимый ресурс обслуживает одну работу в среднем за <code>S</code> секунд, а размер пула равен <code>C</code>. Грубая верхняя граница throughput:</p>
+    <pre><code>throughput ≈ C / S</code></pre>
+
+    <p>Если приходит больше работ, чем pool способен завершать, растёт <code>waiters</code>. Pool не создаёт производительность из воздуха: он выбирает ограниченную конкуренцию вместо перегрузки downstream-системы.</p>
+
+    <dl class="assignment-map">
+      <dt>Слишком мало</dt>
+      <dd>Ресурс недоиспользован, checkout latency растёт даже при свободной мощности downstream.</dd>
+      <dt>Слишком много</dt>
+      <dd>Больше памяти, sockets и server sessions; contention и context switching могут уменьшить throughput.</dd>
+      <dt>Неограниченная очередь</dt>
+      <dd>Перегрузка превращается в рост памяти и latency. Нужны timeout, cancellation или отказ на admission boundary.</dd>
+    </dl>
+
+    <p>Именно поэтому connection pool защищает не только приложение от дорогого connect, но и сервер от неограниченного числа sessions. Официальная документация node-postgres называет обе причины: handshake и ограничение числа клиентов PostgreSQL.<sup><a href="https://node-postgres.com/features/pooling">источник</a></sup></p>
+
+    <h2>6. Pool, semaphore и cache — разные контракты</h2>
+    <dl class="assignment-map">
+      <dt>Semaphore</dt>
+      <dd>Хранит разрешения, а не ресурсы. Ограничивает число одновременных входов. Не знает <code>create</code>, <code>destroy</code>, idle lifetime и health.</dd>
+      <dt>Pool</dt>
+      <dd>Владеет конкретными экземплярами. Выдаёт identity ресурса и требует завершить lease.</dd>
+      <dt>Cache</dt>
+      <dd>Ищет значение по ключу, обычно допускает одновременное чтение и вытесняет данные ради hit rate. Checkout/return не является центральным протоколом.</dd>
+      <dt>Queue</dt>
+      <dd>Хранит работы или значения. Сама по себе не создаёт и не переиспользует ограниченный набор исполнителей.</dd>
+    </dl>
+
+    <div class="panel warning">
+      <strong>Single PGlite показывает границу:</strong> если физический ресурс ровно один и требуется только не пускать к нему более N операций, semaphore может быть честнее pool. Pool оправдан дополнительно, когда он владеет созданием/закрытием PGlite и lease соответствует неделимой работе с его session state.
+    </div>
+
+    <h2>7. Ошибки, которые обязан пережить production pool</h2>
+    <ul>
+      <li><strong>Create failure:</strong> освободить зарезервированный slot; не оставить waiter навечно.</li>
+      <li><strong>Cancellation waiter:</strong> удалить его из очереди, иначе ресурс позже уйдёт уже отменённой работе.</li>
+      <li><strong>Broken resource:</strong> destroy вместо return; при спросе создать замену.</li>
+      <li><strong>Double release:</strong> обнаружить нарушение протокола. В <code>pg-pool</code> повторный <code>client.release()</code> явно бросает ошибку.<sup><a href="https://github.com/brianc/node-postgres/blob/master/packages/pg-pool/index.js">исходник</a></sup></li>
+      <li><strong>Shutdown:</strong> перестать принимать checkout, обработать waiters, закрыть idle и определить судьбу borrowed.</li>
+      <li><strong>Idle failure:</strong> ресурс может умереть, пока никому не выдан; pool должен удалить его и сообщить/заменить согласно контракту.</li>
+    </ul>
+
+    <learning-check>
+      <section class="lab-shell" aria-labelledby="core-check-title">
+        <p class="kicker" id="core-check-title">Проверка механизма</p>
+        <p><strong><code>max = 2</code>. C1 и C2 выданы; R3 ждёт. R1 возвращает здоровый C1. Какой переход сохраняет очередь и не создаёт лишний ресурс?</strong></p>
+        <div class="quiz-options">
+          <button type="button" data-answer="correct" data-feedback="Да. C1 сразу переходит от R1 к первому waiter R3; total остаётся 2, idle остаётся 0.">Передать C1 ожидающему R3</button>
+          <button type="button" data-answer="incorrect" data-feedback="Нет. Пока R3 ждёт, оставлять доступный C1 в idle означает нарушить обязанность диспетчера.">Оставить C1 свободным idle</button>
+          <button type="button" data-answer="incorrect" data-feedback="Нет. Capacity уже равна max; C1 пригоден, поэтому создание C3 нарушило бы лимит и не нужно.">Создать C3 ожидающему R3</button>
+        </div>
+        <p class="quiz-feedback" aria-live="polite">Сначала проверь значения total, idle, borrowed и waiters после перехода.</p>
+      </section>
+    </learning-check>
+
+    <h2>Что теперь должно быть в голове</h2>
+    <p>Pool — конечный автомат (state machine) над дорогими ресурсами. Его главный результат не «быстрее», а <strong>контролируемое владение при ограниченной capacity</strong>. Быстрее становится только та часть, где ресурс действительно можно переиспользовать вместо повторного создания.</p>
+
+    <footer>Если переход в симуляторе кажется неправильным, спроси агента про конкретное состояние и инвариант. Следующий урок разберёт, почему под словом pool в Node.js скрываются четыре разных механизма.</footer>
+  </article>
+</main>
+</body>
+</html>

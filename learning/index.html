@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Учебное пространство effect-orm</title>
+  <link rel="stylesheet" href="assets/lesson-theme.css">
+</head>
+<body>
+<main>
+  <article>
+    <header>
+      <p class="eyebrow">effect-orm · учебное пространство</p>
+      <h1>Карта обучения</h1>
+      <p class="lede">Одна точка входа для текущей миссии, уроков, справочников, исследований и подтверждённых результатов обучения.</p>
+    </header>
+
+    <h2>Сейчас</h2>
+    <div class="panel success">
+      <p class="kicker">Следующий шаг · реконструкция без подсматривания</p>
+      <p>Базовая диагностика 2.1–2.5 уже пройдена. Теперь нужно самостоятельно собрать минимальный чистый срез <code>алгебра → AST → smart constructors → compiler</code> с пустого файла.</p>
+      <p><a href="lessons/0005-rebuild-minimal-query-pipeline.html">Начать: восстановить минимальный query pipeline →</a></p>
+    </div>
+
+    <h2>Как ориентироваться</h2>
+    <dl class="assignment-map">
+      <dt><a href="MISSION.md">MISSION.md</a></dt>
+      <dd>Зачем идёт обучение, критерии результата и граница материала.</dd>
+      <dt><a href="RESOURCES.md">RESOURCES.md</a></dt>
+      <dd>Проверенные первичные источники для текущей миссии.</dd>
+      <dt><a href="NOTES.md">NOTES.md</a></dt>
+      <dd>Маршрут следующих занятий и рабочие преподавательские заметки.</dd>
+      <dt><a href="records/">records/</a></dt>
+      <dd>Только подтверждённые знания и исправленные заблуждения, не журнал активности.</dd>
+    </dl>
+
+    <h2>Текущая тема: Free/AST</h2>
+    <ul>
+      <li><a href="lessons/0005-rebuild-minimal-query-pipeline.html">Урок 0005 — восстановить минимальный query pipeline</a> — следующий</li>
+      <li><a href="lessons/0004-free-ast-query-boundaries.html">Урок 0004 — четыре границы запроса</a> — диагностика пройдена</li>
+      <li><a href="references/free-ast-query-pipeline.html">Справочник — Free/AST-пайплайн запросов</a></li>
+    </ul>
+
+    <h2>Пройденная тема: Effect Pool</h2>
+    <ul>
+      <li><a href="lessons/0001-effect-pool-mental-model.html">Урок 0001 — ментальная модель Effect Pool</a></li>
+      <li><a href="lessons/0002-effect-pool-internals.html">Урок 0002 — механизм Effect Pool изнутри</a></li>
+      <li><a href="lessons/0003-node-and-effect-pools.html">Урок 0003 — пулы Node.js и Effect</a></li>
+      <li><a href="references/effect-pool.html">Справочник — Effect Pool</a></li>
+      <li><a href="research/effect-pool-concepts.md">Исследование — механика resource pool</a></li>
+    </ul>
+
+    <h2>Оставшийся маршрут</h2>
+    <ol class="timeline">
+      <li><strong>Сейчас · чистый вертикальный срез</strong><span>С пустого файла собрать минимальные 2.1–2.4 для одного SELECT.</span></li>
+      <li><strong>Изменение требования</strong><span>Добавить новую форму запроса и проверить глубину интерфейсов AST и compiler.</span></li>
+      <li><strong>2.5 · Effect-helper</strong><span>Восстановить run по типу и проверить его с fake Driver.</span></li>
+      <li><strong>Отложенное воспроизведение</strong><span>После интервала собрать весь минимальный путь 2.1–2.5 без подсматривания.</span></li>
+    </ol>
+
+    <footer>Материалы после раздела 2.5 в текущий маршрут не входят.</footer>
+  </article>
+</main>
+</body>
+</html>
