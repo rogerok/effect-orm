@@ -37,3 +37,14 @@ export type InferInsert<T extends TableDef<string, any>> = {
         : K
   ]: InferColumn<T['_columns'][K]>;
 };
+
+export type InferUpdate<
+  T extends TableDef<
+    string,
+    Record<string, ColumnDef<SqlType, boolean, boolean>>
+  >,
+> = {
+  [
+    K in keyof T['_columns'] as T['_columns'][K]['_pk'] extends true ? never : K
+  ]?: InferColumn<T['_columns'][K]>;
+};

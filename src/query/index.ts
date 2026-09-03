@@ -15,7 +15,7 @@ export {
   not,
   or,
 } from './predicates.js';
-export { select } from './statements.js';
+export { select, del, selectAll, update, insert } from './statements.js';
 export {
   type Expr,
   type Pred,

@@ -1,7 +1,14 @@
-import type { InsertIR } from '#compiler/ir.js';
-import type { Expr, Insert, Pred, Select } from '#query/typed-ast.js';
+import type { DeleteIR, InsertIR, UpdateIR } from '#compiler/ir.js';
+import type {
+  Delete,
+  Expr,
+  Insert,
+  Pred,
+  Select,
+  Update,
+} from '#query/typed-ast.js';
 import type { ColumnDef, SqlType } from '#schema/columns.js';
-import type { InferInsert, InferRow } from '#schema/infer.js';
+import type { InferInsert, InferRow, InferUpdate } from '#schema/infer.js';
 import type { TableDef } from '#schema/table.js';
 
 type SelectOptions = {
@@ -107,4 +114,83 @@ export const insert = <
   };
 
   return ir as Insert<InferReturning<T, R>>;
+};
+
+interface DelOptions<
+  T extends TableDef<
+    string,
+    Record<string, ColumnDef<SqlType, boolean, boolean>>
+  >,
+  R extends ReturningOption<T> | undefined,
+> {
+  readonly returning?: R;
+  readonly where?: Pred;
+}
+
+export const del = <
+  T extends TableDef<
+    string,
+    Record<string, ColumnDef<SqlType, boolean, boolean>>
+  >,
+  R extends ReturningOption<T> | undefined = undefined,
+>(
+  table: T,
+  options: DelOptions<T, R> = {},
+): Delete<InferReturning<T, R>> => {
+  const ir: DeleteIR = {
+    _tag: 'Delete',
+    from: table._name,
+    returning:
+      options.returning === '*'
+        ? '*'
+        : options.returning !== undefined
+          ? (options.returning as ReadonlyArray<string>).map((name) => ({
+              expr: { _tag: 'Column', name },
+            }))
+          : null,
+    ...(options.where === undefined ? {} : { where: options.where }),
+  };
+  return ir as Delete<InferReturning<T, R>>;
+};
+
+interface UpdateOptions<
+  T extends TableDef<
+    string,
+    Record<string, ColumnDef<SqlType, boolean, boolean>>
+  >,
+  R extends ReturningOption<T> | undefined,
+> {
+  readonly returning?: R;
+  readonly where?: Pred;
+}
+
+export const update = <
+  T extends TableDef<
+    string,
+    Record<string, ColumnDef<SqlType, boolean, boolean>>
+  >,
+  R extends ReturningOption<T> | undefined = undefined,
+>(
+  table: T,
+  set: InferUpdate<T>,
+  options: UpdateOptions<T, R> = {},
+): Update<InferReturning<T, R>> => {
+  const ir: UpdateIR = {
+    _tag: 'Update',
+    table: table._name,
+    set: Object.fromEntries(
+      Object.entries(set).map(([k, v]) => [k, { _tag: 'Literal', value: v }]),
+    ),
+    returning:
+      options.returning === '*'
+        ? '*'
+        : options.returning !== undefined
+          ? (options.returning as ReadonlyArray<string>).map((name) => ({
+              expr: { _tag: 'Column', name },
+            }))
+          : null,
+    ...(options.where === undefined ? {} : { where: options.where }),
+  };
+
+  return ir as Update<InferReturning<T, R>>;
 };
