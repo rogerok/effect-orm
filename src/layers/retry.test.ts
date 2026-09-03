@@ -1,5 +1,5 @@
 import { describe, it } from '@effect/vitest';
-import { Effect, Layer } from 'effect';
+import { Effect, Layer, Stream } from 'effect';
 import { expect } from 'vitest';
 
 import type { Dialect } from '#dialect.js';
@@ -25,6 +25,7 @@ const makeLayer = ({ onAttempt, error, dialect }: FailingDriverOptions) =>
   Layer.succeed(
     Driver,
     Driver.of({
+      executeStream: () => Stream.empty,
       dialect,
       executeRaw: () =>
         Effect.suspend(() => {

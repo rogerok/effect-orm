@@ -1,5 +1,5 @@
 import { describe, it } from '@effect/vitest';
-import { Duration, Effect, Fiber, Layer, Logger } from 'effect';
+import { Duration, Effect, Fiber, Layer, Logger, Stream } from 'effect';
 import { TestClock } from 'effect/testing';
 
 import { SqliteDialect } from '#dialect.js';
@@ -22,6 +22,7 @@ const rawResult = {
 const fastDriver = Layer.succeed(
   Driver,
   Driver.of({
+    executeStream: () => Stream.empty,
     dialect: SqliteDialect,
     executeRaw: () => Effect.succeed(rawResult),
   }),
@@ -35,6 +36,7 @@ const slowDriver = Layer.effect(
     const inner = yield* Driver;
     return Driver.of({
       dialect: inner.dialect,
+      executeStream: inner.executeStream,
       executeRaw: (sql, params) =>
         Effect.gen(function* () {
           yield* Effect.sleep(slowQueryDuration);

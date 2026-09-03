@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@effect/vitest';
-import { Effect, Fiber, Layer, Metric } from 'effect';
+import { Effect, Fiber, Layer, Metric, Stream } from 'effect';
 import { TestClock } from 'effect/testing';
 
 import { SqliteDialect } from '#dialect.js';
@@ -9,6 +9,7 @@ import { MetricLayer } from '#layers/metric.js';
 const driver = Layer.succeed(
   Driver,
   Driver.of({
+    executeStream: () => Stream.empty,
     dialect: SqliteDialect,
     executeRaw: () =>
       Effect.sleep('100 millis').pipe(

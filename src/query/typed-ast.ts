@@ -7,8 +7,6 @@ import type {
   UpdateIR,
 } from '#compiler/ir.js';
 
-import * as Q from '#compiler/ir.js';
-
 declare const Brand: unique symbol;
 
 export type Expr<T = unknown> = { readonly [Brand]?: T } & ExprIR;

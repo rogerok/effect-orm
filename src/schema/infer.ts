@@ -1,4 +1,4 @@
-import type { ColumnDef } from '#schema/columns.js';
+import type { ColumnDef, SqlType } from '#schema/columns.js';
 import type { TableDef } from '#schema/table.js';
 
 export interface SqlToTs {
@@ -9,9 +9,10 @@ export interface SqlToTs {
   text: string;
 }
 
-export type InferColumn<C extends ColumnDef> = C['_nullable'] extends true
-  ? SqlToTs[C['_type']] | null
-  : SqlToTs[C['_type']];
+export type InferColumn<C extends ColumnDef<SqlType, boolean, boolean>> =
+  C['_nullable'] extends true
+    ? SqlToTs[C['_type']] | null
+    : SqlToTs[C['_type']];
 
 // oxlint-disable-next-line typescript/no-explicit-any
 export type InferRow<T extends TableDef<string, any>> = {

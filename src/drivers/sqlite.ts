@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { Effect, Layer } from 'effect';
+import { Effect, Layer, Stream } from 'effect';
 
 import type { DriverError } from '#errors/errors.js';
 
@@ -76,6 +76,21 @@ const make = ({ readonly = false, path, enableForeignKeys }: SqliteOptions) =>
 
     return Driver.of({
       dialect: SqliteDialect,
+      executeStream: (sql, params, _chunkSize = 100) =>
+        Stream.fromIterableEffect(
+          Effect.try({
+            try: () => {
+              const stmt = db.prepare(sql);
+              if (!stmt.reader)
+                throw new Error('executeStream requires SELECT');
+
+              return stmt.iterate(...(params as unknown[])) as Iterable<
+                Record<string, unknown>
+              >;
+            },
+            catch: (cause) => mapSqliteError(cause, sql, params),
+          }),
+        ),
       executeRaw: (sql, params) =>
         Effect.try({
           try: () => {

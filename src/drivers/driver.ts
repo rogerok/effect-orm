@@ -1,4 +1,4 @@
-import type { Effect } from 'effect';
+import type { Effect, Stream } from 'effect';
 
 import { Context } from 'effect';
 
@@ -17,6 +17,12 @@ export interface DriverImpl {
     sql: string,
     params: ReadonlyArray<unknown>,
   ) => Effect.Effect<RawResult, DriverError>;
+
+  readonly executeStream: (
+    sql: string,
+    params: ReadonlyArray<unknown>,
+    chunkSize?: number,
+  ) => Stream.Stream<Record<string, unknown>, DriverError>;
 }
 
 export class Driver extends Context.Service<Driver, DriverImpl>()(

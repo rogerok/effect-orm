@@ -8,6 +8,7 @@ export const TracingLayer = Layer.effect(
     const inner = yield* Driver;
     return Driver.of({
       dialect: inner.dialect,
+      executeStream: inner.executeStream,
       executeRaw: (sql, params) =>
         Effect.gen(function* () {
           const result = yield* inner.executeRaw(sql, params);

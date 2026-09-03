@@ -25,6 +25,7 @@ export const RetryLayer = ({ maxAttempts, exponentMs }: RetryLayerOptions) =>
       const inner = yield* Driver;
 
       return Driver.of({
+        executeStream: inner.executeStream,
         dialect: inner.dialect,
         executeRaw: (sql, params) =>
           inner.executeRaw(sql, params).pipe(

@@ -13,6 +13,7 @@ export const SlowQueryLogLayer = (options?: SlowQueryLogOptions) =>
       const inner = yield* Driver;
       const slowMs = options?.slowMs ?? 100;
       return Driver.of({
+        executeStream: inner.executeStream,
         dialect: inner.dialect,
         executeRaw: (sql, params) =>
           Effect.gen(function* () {

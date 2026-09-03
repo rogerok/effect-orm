@@ -1,5 +1,5 @@
 import { createClient, type InValue, LibsqlError } from '@libsql/client';
-import { Effect, Layer } from 'effect';
+import { Effect, Layer, Stream } from 'effect';
 
 import type { DriverError } from '#errors/errors.js';
 
@@ -68,6 +68,8 @@ const make = (options: LibsqlOptions) =>
     );
 
     return Driver.of({
+      // TODO: implement executeStream
+      executeStream: () => Stream.empty,
       dialect: SqliteDialect,
       executeRaw: (sql, params) =>
         Effect.tryPromise({

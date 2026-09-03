@@ -21,6 +21,7 @@ export const MetricLayer = Layer.effect(
     );
 
     return Driver.of({
+      executeStream: inner.executeStream,
       dialect: inner.dialect,
       executeRaw: (sql, params) =>
         Effect.gen(function* () {
