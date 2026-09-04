@@ -14,6 +14,7 @@ export type Predicate =
       readonly max: Expr;
       readonly min: Expr;
     }
+  | { readonly _tag: 'Boolean'; readonly value: boolean }
   | {
       readonly _tag: 'Eq' | 'Gt' | 'Gte' | 'Like' | 'Lt' | 'Lte' | 'Neq';
       readonly left: Expr;
@@ -26,6 +27,7 @@ export type Predicate =
     }
   | { readonly _tag: 'IsNull'; readonly expr: Expr; readonly negate: boolean }
   | { readonly _tag: 'Not'; readonly pred: Predicate };
+
 export type Join = {
   readonly kind: 'inner' | 'left';
   readonly on: Predicate;

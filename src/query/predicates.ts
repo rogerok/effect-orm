@@ -33,7 +33,7 @@ export const isNotNull = (e: Expr<unknown>): Pred =>
 export const and = (...preds: Pred[]): Pred => ({ _tag: 'And', preds }) as Pred;
 export const or = (...preds: Pred[]): Pred => ({ _tag: 'Or', preds }) as Pred;
 export const not = (p: Pred): Pred => ({ _tag: 'Not', pred: p }) as Pred;
-
+export const bool = (value: boolean): Pred => ({ _tag: 'Boolean', value });
 export const between = <T>(expr: Expr<T>, min: Expr<T>, max: Expr<T>): Pred =>
   ({
     _tag: 'Between',

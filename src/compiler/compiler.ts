@@ -96,6 +96,7 @@ const compilePredicate = (pred: Predicate, ctx: Ctx): string =>
       ({ expr, min, max }) =>
         `${compileExpr(expr, ctx)} BETWEEN ${compileExpr(min, ctx)} AND ${compileExpr(max, ctx)}`,
     ),
+    Match.tag('Boolean', ({ value }) => (value ? 'TRUE' : 'FALSE')),
     Match.exhaustive,
   );
 

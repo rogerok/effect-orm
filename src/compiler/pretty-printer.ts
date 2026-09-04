@@ -93,6 +93,7 @@ const printPredicate = (pred: Predicate): string =>
       ({ expr, negate }) =>
         `${printExpr(expr)} IS ${negate ? 'NOT NULL' : 'NULL'}`,
     ),
+    Match.tag('Boolean', ({ value }) => (value ? 'TRUE' : 'FALSE')),
     Match.exhaustive,
   );
 

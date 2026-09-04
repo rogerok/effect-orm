@@ -14,6 +14,7 @@ export {
   neq,
   not,
   or,
+  bool,
 } from './predicates.js';
 export { select, del, selectAll, update, insert } from './statements.js';
 export {

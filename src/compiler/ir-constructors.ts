@@ -73,3 +73,5 @@ export const between = (expr: Expr, min: Expr, max: Expr): Predicate => ({
   max,
   expr,
 });
+
+export const bool = (value: boolean): Predicate => ({ _tag: 'Boolean', value });
