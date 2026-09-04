@@ -151,7 +151,7 @@ Pool.invalidate(pool, item): Effect<void, never, Scope.Scope>
 
 ### Вывод для текущего `make()`
 
-**Факт проекта.** Текущий `make(options)` помещает `PGlite.create(options)` внутрь `Effect.acquireRelease`, а release вызывает `instance.close()`; затем создаёт `Driver`, замкнутый на этот конкретный `pg` ([`src/drivers/pglite.ts`](../src/drivers/pglite.ts#L49-L72)).
+**Факт проекта.** Текущий `make(options)` помещает `PGlite.create(options)` внутрь `Effect.acquireRelease`, а release вызывает `instance.close()`; затем создаёт `Driver`, замкнутый на этот конкретный `pg` ([`src/drivers/pglite.ts`](../../src/drivers/pglite.ts#L49-L72)).
 
 **Синтез.** Если использовать `Pool.make({ acquire: make(options), size: N })`, то **каждая аллокация item** вызывает `PGlite.create()` и создаёт целый самостоятельный PGlite/WASM/Postgres экземпляр со своим lifecycle и своим single-connection mutex. Это не превращает одну PGlite database connection в `N` server connections, как `pg.Pool`; это pool из `N` тяжёлых database instances/Drivers. С default in-memory options это также не pool соединений к одному общему backend: каждый `create()` создаёт свой instance. Для сохранения семантики «один PGlite instance, строго один запрос/транзакция одновременно» адекватная ёмкость — один экземпляр (`size: 1`, `concurrency: 1`); тогда Effect Pool добавляет scoped checkout/backpressure/lifecycle, но не увеличивает DB parallelism.
 

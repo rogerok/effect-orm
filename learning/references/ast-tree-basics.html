@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Справочник — AST с точки зрения фронтенд-разработчика</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+</head>
+<body>
+<main>
+  <article>
+    <header>
+      <p class="eyebrow">Справочник · база для E2.3</p>
+      <h1>AST — дерево обычных объектов</h1>
+      <p class="lede">Минимальный словарь для чтения текущего <code>Predicate</code> без compiler theory.</p>
+      <p class="meta"><a href="../lessons/0007-ast-optimizer-from-frontend.html">← Вводный урок</a> · <a href="../index.html">Карта обучения</a></p>
+    </header>
+
+    <h2>Четыре термина</h2>
+    <dl class="assignment-map">
+      <dt>AST</dt>
+      <dd>Абстрактное синтаксическое дерево (Abstract Syntax Tree): вложенные объекты, которые описывают запрос, но не выполняют его.</dd>
+      <dt>Узел</dt>
+      <dd>Один объект дерева. Например, <code>{ _tag: "Not", pred: ... }</code>.</dd>
+      <dt><code>_tag</code></dt>
+      <dd>Поле-дискриминатор: сообщает, какой это вариант объекта и какие остальные поля у него есть.</dd>
+      <dt>Преобразование</dt>
+      <dd>Функция получает дерево и возвращает другое дерево. Исходные объекты не изменяются.</dd>
+    </dl>
+
+    <h2>Как читать вложенность</h2>
+    <pre><code>{
+  _tag: "Not",              // внешний узел
+  pred: {
+    _tag: "Not",            // его ребёнок
+    pred: p                  // ребёнок внутреннего Not
+  }
+}</code></pre>
+    <p>Запись выше читается изнутри наружу: есть условие <code>p</code>, его отрицали, затем результат отрицали ещё раз. Два отрицания можно убрать, поэтому итог — <code>p</code>.</p>
+
+    <h2>Рекурсия в одной фразе</h2>
+    <p>Если поле узла снова содержит <code>Predicate</code>, функция обрабатывает это поле вызовом самой себя. Это не специальная backend-механика: тот же приём используется при обходе DOM, дерева комментариев или вложенного меню.</p>
+
+    <h2>Чистота</h2>
+    <ul>
+      <li>Не присваивать новое значение полям входного объекта.</li>
+      <li>Не изменять входные массивы через <code>push</code>, <code>splice</code> или <code>sort</code>.</li>
+      <li>Можно вернуть уже существующий вложенный узел <code>p</code>: его переиспользование не является мутацией.</li>
+      <li>Когда дети изменились, родитель собирается новым объектом.</li>
+    </ul>
+
+    <h2>Один вопрос при чтении каждой ветки</h2>
+    <p><strong>Какие поля этого узла содержат другие узлы?</strong> Для <code>Not</code> это <code>pred</code>; для <code>And</code> и <code>Or</code> — массив <code>preds</code>; для <code>Gt</code> вложенных предикатов нет.</p>
+
+    <h2>Источник</h2>
+    <p><a href="https://www.typescriptlang.org/docs/handbook/2/narrowing.html#discriminated-unions">TypeScript Handbook: Discriminated unions</a> объясняет, почему проверка поля <code>_tag</code> позволяет TypeScript определить точную форму объекта.</p>
+
+    <footer>Если термин снова выглядит абстрактно, замени его конкретным вопросом об объекте: «какое значение лежит в этом поле прямо сейчас?»</footer>
+  </article>
+</main>
+</body>
+</html>

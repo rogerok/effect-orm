@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Урок 0007 — оптимизатор AST с нуля</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+  <script src="../assets/interactive-components.js" defer></script>
+</head>
+<body>
+<main>
+  <article>
+    <header>
+      <p class="eyebrow">Урок 0007 · подготовка к E2.3 · 7 минут</p>
+      <h1>AST — это просто дерево объектов</h1>
+      <p class="lede">Пока забудь слова «fold», «optimizer pass» и «семантика SQL». Разберём одну операцию E2.3 на знакомом JavaScript.</p>
+      <p class="meta"><a href="../index.html">← Карта обучения</a> · <a href="0005-rebuild-minimal-query-pipeline.html">← Урок 0005</a> · <a href="0006-e2-3-optimizer-pass.html">Следующий: E2.3 →</a> · <a href="../references/ast-tree-basics.html">Короткий справочник ↗</a></p>
+    </header>
+
+    <h2>Знакомая аналогия</h2>
+    <p>Во фронтенде ты уже встречал деревья:</p>
+    <pre><code>&lt;main&gt;
+  &lt;section&gt;
+    &lt;button&gt;Сохранить&lt;/button&gt;
+  &lt;/section&gt;
+&lt;/main&gt;</code></pre>
+    <p>DOM состоит из узлов: у <code>main</code> есть ребёнок <code>section</code>, у него — <code>button</code>. AST устроен так же, только узлы — обычные JavaScript-объекты, а не HTML-элементы.</p>
+
+    <h2>Один узел из проекта</h2>
+    <p>В <a href="../../src/compiler/ir.ts"><code>src/compiler/ir.ts</code></a> отрицание условия описано так:</p>
+    <pre><code>{
+  readonly _tag: "Not";
+  readonly pred: Predicate;
+}</code></pre>
+    <ul>
+      <li><code>_tag: "Not"</code> означает «этот объект — отрицание».</li>
+      <li><code>pred</code> содержит другое условие, то есть дочерний узел.</li>
+      <li>Никакого SQL и обращения к базе здесь ещё нет. Это только данные.</li>
+    </ul>
+
+    <div class="panel insight">
+      <p><strong>Ментальная замена:</strong> когда видишь «AST-узел», читай «объект с полем <code>_tag</code> и возможными вложенными объектами».</p>
+    </div>
+
+    <h2>Что делает оптимизатор</h2>
+    <p>Оптимизатор получает один объект и возвращает более простой объект с тем же смыслом. Первое правило E2.3:</p>
+    <pre><code>Not(Not(p))  →  p</code></pre>
+    <p>Пример входных данных:</p>
+    <pre><code>const input = {
+  _tag: "Not",
+  pred: {
+    _tag: "Not",
+    pred: p
+  }
+};</code></pre>
+    <p>Внешний <code>Not</code> содержит внутренний <code>Not</code>. Внутренний <code>Not</code> содержит <code>p</code>. Поэтому результатом будет именно <code>p</code>.</p>
+
+    <learning-check>
+      <section class="lab-shell" aria-labelledby="tree-check">
+        <p class="kicker" id="tree-check">Проверка чтения дерева</p>
+        <p>Что нужно вернуть для объекта выше?</p>
+        <div class="quiz-options">
+          <button type="button" data-answer="correct" data-feedback="Да. Два соседних Not убираются, а внутреннее условие p сохраняется.">Вернуть внутренний p</button>
+          <button type="button" data-answer="wrong" data-feedback="Нет. Тогда двойное отрицание останется и дерево не станет проще.">Вернуть внешний Not</button>
+        </div>
+        <p class="quiz-feedback" aria-live="polite">Сначала выбери ответ.</p>
+      </section>
+    </learning-check>
+
+    <h2>Где появляется рекурсия</h2>
+    <p>Представь более глубокое дерево:</p>
+    <pre><code>And(
+  Not(Not(p))
+)</code></pre>
+    <p>Сначала нужно обработать ребёнка <code>Not(Not(p))</code> и получить <code>p</code>. Только затем внешний <code>And</code> увидит, что у него остался один ребёнок. Поэтому функция обработки вызывает саму себя для вложенных <code>Predicate</code>. Это и есть рекурсия.</p>
+
+    <p>Псевдокод без TypeScript-синтаксиса:</p>
+    <pre><code>обработать(узел):
+  если у узла есть дети:
+    сначала обработать детей
+  затем упростить сам узел
+  вернуть результат</code></pre>
+
+    <learning-check>
+      <section class="lab-shell" aria-labelledby="mutation-check">
+        <p class="kicker" id="mutation-check">Проверка чистоты</p>
+        <p>Что делать с объектом <code>input</code> во время преобразования?</p>
+        <div class="quiz-options">
+          <button type="button" data-answer="correct" data-feedback="Да. Функция возвращает результат, не присваивая новые значения полям входного объекта.">Не менять вход</button>
+          <button type="button" data-answer="wrong" data-feedback="Нет. Задание прямо запрещает мутацию исходного AST; изменение усложнит повторное использование дерева.">Менять вход напрямую</button>
+        </div>
+        <p class="quiz-feedback" aria-live="polite">Выбери вариант.</p>
+      </section>
+    </learning-check>
+
+    <h2>На этом шаге достаточно</h2>
+    <p>Сейчас не пиши весь E2.3. Сначала научись читать один объект как дерево. Для примера ниже ответь тремя короткими строками:</p>
+    <pre><code>const p = gt(col("age"), lit(18));
+const input = not(not(p));</code></pre>
+    <ol>
+      <li>Какой <code>_tag</code> у корневого объекта <code>input</code>?</li>
+      <li>Какой <code>_tag</code> у <code>input.pred</code>?</li>
+      <li>Какое значение должен вернуть оптимизатор?</li>
+    </ol>
+
+    <h2>Первичный источник</h2>
+    <p><a href="https://www.typescriptlang.org/docs/handbook/2/narrowing.html#discriminated-unions">TypeScript Handbook: Discriminated unions</a>. Пока достаточно первого примера с общим полем-дискриминатором; остальные разделы читать не нужно.</p>
+
+    <footer>Ответь агенту на три вопроса выше. После этого добавим только одну ветку <code>Not(Not(p))</code>, без SQL, базы данных и полного решения E2.3.</footer>
+  </article>
+</main>
+</body>
+</html>

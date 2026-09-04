@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1" name="viewport">
+  <title>Урок 0008 — константный предикат на границе WHERE</title>
+  <link href="../assets/lesson-theme.css" rel="stylesheet">
+  <script defer src="../assets/interactive-components.js"></script>
+</head>
+<body>
+<main>
+  <article>
+    <header>
+      <p class="eyebrow">E2.3 · следующий шаг</p>
+      <h1>Когда сравнение уже известно</h1>
+      <p class="lede">Научиться сворачивать <code>Eq(lit(x), lit(y))</code>, не перепутав выражение, предикат и
+        отсутствие <code>WHERE</code>.</p>
+      <p class="meta"><a href="../index.html">← Карта обучения</a> · <a href="0006-e2-3-optimizer-pass.html">← Урок E2.3</a> · <a href="../references/0001-predicate-optimizer-invariants.html">Справочник оптимизатора</a> · <a href="../records/0015-e2-3-explicit-boolean-optimizer-complete.md">Запись результата</a></p>
+    </header>
+
+    <h2>Что уже работает</h2>
+    <p>Текущий <a href="../../src/compiler/optimize.ts"><code>optimizePredicate</code></a> рекурсивно обрабатывает детей
+      многосоставного <code>And</code>, удаляет пустой <code>And()</code>, разворачивает <code>And(p)</code> и снимает
+      двойной <code>Not</code>. Следующая граница — <strong>constant folding</strong>, вычисление результата операции
+      над двумя литералами заранее.</p>
+
+    <h2>Сначала проверь контракт типов</h2>
+    <p>В текущем <a href="../../src/compiler/ir.ts"><code>ir.ts</code></a> два множества узлов разделены:</p>
+    <pre><code>Expr      = Column | Literal
+Predicate = Eq | Gt | ... | And | Or | Not
+
+optimizePredicate(input: Predicate): Predicate | null</code></pre>
+    <p><code>lit(true)</code> создаёт <code>Expr</code>. Функция обязана вернуть <code>Predicate | null</code>. Поэтому
+      буквальное правило из текста задания</p>
+    <pre><code>Eq(lit(x), lit(y)) → lit(x === y)</code></pre>
+    <p>не помещается в тип текущего AST.</p>
+
+    <div class="panel warning">
+      <p><strong>В условии есть расхождение.</strong> Текст просит вернуть <code>Literal</code>, а acceptance-тест для
+        <code>Eq(lit(1), lit(1))</code> ожидает <code>null</code>. Такой тест фиксирует выбранный контракт, но не
+        доказывает, что контракт удачен: тест тоже может быть ошибочным или описывать только один частный контекст.</p>
+    </div>
+
+    <h2>Почему <code>null</code> означает TRUE</h2>
+    <p>Компилятор превращает пустой <code>And()</code> в SQL <code>TRUE</code>. Оптимизатор превращает тот же узел в
+      <code>null</code>. Когда позже <code>optimizeSelect</code> положит это значение в optional-поле
+      <code>where?</code>, <code>null</code> должно стать <code>undefined</code>: запрос без <code>WHERE</code>
+      пропускает все строки, как <code>WHERE TRUE</code>.</p>
+    <pre><code>Eq(Literal(1), Literal(1))
+             ↓  1 === 1
+            true
+             ↓  контракт optimizer
+            null
+             ↓  граница SelectIR.where?
+         where: undefined</code></pre>
+
+    <div class="panel warning">
+      <p><strong><code>null</code> безопасен не везде.</strong> Если он означает постоянный <code>TRUE</code>, то внутри
+        <code>And</code> его можно отбросить: <code>p AND TRUE = p</code>. Внутри <code>Or</code> отбросить его нельзя:
+        <code>p OR TRUE = TRUE</code>. Под <code>Not</code> он должен превратиться в <code>FALSE</code>. Следовательно,
+        <code>null</code> — не просто «узла больше нет», а скрытое логическое значение, которое каждый родитель обязан
+        трактовать по-разному.</p>
+    </div>
+
+    <learning-check>
+      <section aria-labelledby="truth-check" class="lab-shell">
+        <p class="kicker" id="truth-check">Прогноз до правки</p>
+        <p>Что должен вернуть текущий API для <code>eq(lit(1), lit(1))</code>?</p>
+        <div class="quiz-options">
+          <button data-answer="correct" data-feedback="Да. Acceptance-тест задаёт null как представление истинного WHERE-предиката."
+                  type="button">Вернуть
+            null
+          </button>
+          <button data-answer="wrong" data-feedback="Нет. Or() компилируется в FALSE и изменит множество выбранных строк."
+                  type="button">Вернуть Or()
+          </button>
+        </div>
+        <p aria-live="polite" class="quiz-feedback">Сначала выбери ответ.</p>
+      </section>
+    </learning-check>
+
+    <h2>Одна пользовательская правка</h2>
+    <p>Не добавляй пока весь <code>Eq</code> и <code>Or</code>. Сделай один красно-зелёный цикл:</p>
+    <ol>
+      <li>В <a href="../../src/compiler/optimize.test.ts"><code>optimize.test.ts</code></a> добавь acceptance-сценарий
+        <code>eq(lit(1), lit(1)) → null</code>.
+      </li>
+      <li>Запусти только этот файл и убедись, что новый тест сначала падает.</li>
+      <li>Добавь в <code>optimizePredicate</code> ветку, которая входит только в <code>Eq</code> с двумя
+        <code>Literal</code>.
+      </li>
+      <li>Внутри ветки вычисли строгую эквивалентность значений. Для результата <code>true</code> верни значение,
+        предсказанное выше. Ветку <code>false</code> пока оставь без нового преобразования.
+      </li>
+      <li>Снова запусти только тесты оптимизатора.</li>
+    </ol>
+    <p>Каркас намеренно неполный — условия narrowing и возврат пишет пользователь:</p>
+    <pre><code>если корень — Eq
+  и left — Literal
+  и right — Literal:
+    equal = left.value === right.value
+    если equal:
+      вернуть представление TRUE
+
+вернуть исходный узел</code></pre>
+
+    <h2>Почему пока не сворачиваем любые значения</h2>
+    <p><code>Literal.value</code> имеет тип <code>unknown</code>. JavaScript <code>===</code> и SQL <code>=</code> не
+      равнозначны на всём этом множестве. Например, в JavaScript <code>null === null</code> даёт <code>true</code>, а
+      обычное SQL-сравнение <code>NULL = NULL</code> даёт <code>NULL</code>, то есть «неизвестно». PostgreSQL описывает
+      это прямо в разделе <a href="https://www.postgresql.org/docs/current/functions-comparison.html">Comparison
+        Functions and Operators</a>. Сам оператор <code>===</code> определён алгоритмом <a
+        href="https://tc39.es/ecma262/multipage/abstract-operations.html#sec-isstrictlyequal">ECMAScript
+        IsStrictlyEqual</a>.</p>
+    <p>Для учебного acceptance-сценария с числами правило однозначно. Перед общим правилом понадобится отдельно решить
+      допустимый домен литералов и представление постоянного <code>FALSE</code>.</p>
+
+    <div class="panel insight">
+      <p><strong>Инвариант шага:</strong> оптимизатор может менять форму дерева, но не множество строк, которое
+        пропускает предикат.</p>
+    </div>
+
+    <h2>Первичные источники</h2>
+    <ul>
+      <li><a href="https://tc39.es/ecma262/multipage/abstract-operations.html#sec-isstrictlyequal">ECMAScript:
+        IsStrictlyEqual</a> — точная семантика <code>===</code>.
+      </li>
+      <li><a href="https://www.postgresql.org/docs/current/functions-comparison.html">PostgreSQL: Comparison Functions
+        and Operators</a> — поведение <code>=</code> и <code>NULL</code>.
+      </li>
+      <li><a href="https://www.postgresql.org/docs/current/functions-logical.html">PostgreSQL: Logical Operators</a> —
+        таблицы истинности <code>AND</code>, <code>OR</code>, <code>NOT</code>.
+      </li>
+    </ul>
+
+    <footer>После зелёного теста пришли свою ветку <code>Eq</code> или ошибку TypeScript. Задавай любые уточняющие
+      вопросы: следующий шаг зависит от того, как ты объяснишь представление постоянного <code>FALSE</code>.
+    </footer>
+  </article>
+</main>
+</body>
+</html>

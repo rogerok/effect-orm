@@ -17,9 +17,9 @@
 
     <h2>Сейчас</h2>
     <div class="panel success">
-      <p class="kicker">Следующий шаг · реконструкция без подсматривания</p>
-      <p>Базовая диагностика 2.1–2.5 уже пройдена. Теперь нужно самостоятельно собрать минимальный чистый срез <code>алгебра → AST → smart constructors → compiler</code> с пустого файла.</p>
-      <p><a href="lessons/0005-rebuild-minimal-query-pipeline.html">Начать: восстановить минимальный query pipeline →</a></p>
+      <p class="kicker">Последний результат · E2.3 завершён</p>
+      <p>Полный проход оптимизатора с явным Boolean-предикатом подтверждён в коде и записях обучения. Для повторения начни с дерева AST, затем пройди E2.3 и сверь решение со справочниками.</p>
+      <p><a href="lessons/0007-ast-optimizer-from-frontend.html">Начать повторение: AST →</a> · <a href="records/0015-e2-3-explicit-boolean-optimizer-complete.md">Открыть запись результата</a></p>
     </div>
 
     <h2>Как ориентироваться</h2>
@@ -30,15 +30,26 @@
       <dd>Проверенные первичные источники для текущей миссии.</dd>
       <dt><a href="NOTES.md">NOTES.md</a></dt>
       <dd>Маршрут следующих занятий и рабочие преподавательские заметки.</dd>
-      <dt><a href="records/">records/</a></dt>
-      <dd>Только подтверждённые знания и исправленные заблуждения, не журнал активности.</dd>
+      <dt><a href="lessons/">lessons/</a></dt>
+      <dd>Пошаговые задания и упражнения, которые можно проходить самостоятельно.</dd>
+      <dt><a href="references/">references/</a></dt>
+      <dd>Короткие опоры для сверки после первой самостоятельной попытки.</dd>
+      <dt><a href="records/index.md">records/index.md</a></dt>
+      <dd>Хронология подтверждённых результатов и связи с уроками и справочниками.</dd>
     </dl>
 
     <h2>Текущая тема: Free/AST</h2>
     <ul>
-      <li><a href="lessons/0005-rebuild-minimal-query-pipeline.html">Урок 0005 — восстановить минимальный query pipeline</a> — следующий</li>
-      <li><a href="lessons/0004-free-ast-query-boundaries.html">Урок 0004 — четыре границы запроса</a> — диагностика пройдена</li>
+      <li><a href="lessons/0004-free-ast-query-boundaries.html">Урок 0004 — четыре границы запроса</a> — базовая карта</li>
+      <li><a href="lessons/0005-rebuild-minimal-query-pipeline.html">Урок 0005 — восстановить минимальный query pipeline</a> — практика воспроизведения</li>
+      <li><a href="lessons/0007-ast-optimizer-from-frontend.html">Урок 0007 — оптимизатор AST с нуля</a> — вводный шаг</li>
+      <li><a href="lessons/0006-e2-3-optimizer-pass.html">Урок 0006 — полный маршрут E2.3</a> — основной проход</li>
+      <li><a href="lessons/0008-constant-predicate-boundary.html">Урок 0008 — константный предикат на границе WHERE</a> — граница constant folding</li>
       <li><a href="references/free-ast-query-pipeline.html">Справочник — Free/AST-пайплайн запросов</a></li>
+      <li><a href="references/optimizer-pass.html">Справочник — optimizer pass для Predicate AST</a></li>
+      <li><a href="references/ast-tree-basics.html">Справочник — AST с точки зрения фронтенд-разработчика</a></li>
+      <li><a href="references/0001-predicate-optimizer-invariants.html">Справочник — инварианты оптимизатора Predicate</a></li>
+      <li><a href="records/index.md">Записи обучения — хронология E2.3</a></li>
     </ul>
 
     <h2>Пройденная тема: Effect Pool</h2>
@@ -52,10 +63,10 @@
 
     <h2>Оставшийся маршрут</h2>
     <ol class="timeline">
-      <li><strong>Сейчас · чистый вертикальный срез</strong><span>С пустого файла собрать минимальные 2.1–2.4 для одного SELECT.</span></li>
-      <li><strong>Изменение требования</strong><span>Добавить новую форму запроса и проверить глубину интерфейсов AST и compiler.</span></li>
-      <li><strong>2.5 · Effect-helper</strong><span>Восстановить run по типу и проверить его с fake Driver.</span></li>
-      <li><strong>Отложенное воспроизведение</strong><span>После интервала собрать весь минимальный путь 2.1–2.5 без подсматривания.</span></li>
+      <li><strong>Повторение · AST</strong><span>Пройти урок 0007 и вслух объяснить вложенность обычных JavaScript-объектов.</span></li>
+      <li><strong>E2.3 · сверка контракта</strong><span>Сопоставить явный Boolean-предикат текущего кода с исходным acceptance-примером курса.</span></li>
+      <li><strong>Чистый вертикальный срез</strong><span>С пустого файла воспроизвести минимальные 2.1–2.4 для одного SELECT.</span></li>
+      <li><strong>2.5 и повторение</strong><span>Восстановить Effect-helper, затем повторить весь минимальный путь через интервал.</span></li>
     </ol>
 
     <footer>Материалы после раздела 2.5 в текущий маршрут не входят.</footer>

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Справочник — инварианты оптимизатора Predicate</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+</head>
+<body>
+<main>
+  <article>
+    <header>
+      <p class="eyebrow">Быстрый справочник · E2.3</p>
+      <h1>Инварианты оптимизатора Predicate</h1>
+      <p class="lede">Короткая карта для реализации и проверки преобразований AST.</p>
+      <p class="meta"><a href="../index.html">Карта обучения</a> · <a href="../lessons/0008-constant-predicate-boundary.html">к уроку о constant folding →</a> · <a href="../records/0015-e2-3-explicit-boolean-optimizer-complete.md">запись результата</a></p>
+    </header>
+
+    <h2>Главный контракт</h2>
+    <div class="panel insight">
+      <p><strong>Сохранение смысла:</strong> исходный и новый предикаты должны пропускать одно и то же множество строк. Форма AST может измениться; наблюдаемое поведение запроса — нет.</p>
+    </div>
+    <ul>
+      <li>Входной AST не мутируется.</li>
+      <li>Каждый вложенный <code>Predicate</code> сначала проходит рекурсивную оптимизацию.</li>
+      <li>После обработки детей родитель повторно нормализуется.</li>
+      <li><code>Boolean(true)</code> — постоянная истина внутри AST; на границе <code>where?</code> она удаляется структурно.</li>
+    </ul>
+
+    <h2>Правила E2.3</h2>
+    <table>
+      <thead>
+        <tr><th>Вход</th><th>Результат</th><th>Причина</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>And()</code></td><td><code>Boolean(true)</code></td><td>Пустая конъюнкция компилируется как <code>TRUE</code>.</td></tr>
+        <tr><td><code>And(p)</code></td><td><code>p</code></td><td>Единственная оболочка не меняет смысл.</td></tr>
+        <tr><td><code>And(p, q)</code></td><td><code>And(p, q)</code></td><td>Удаление любого ребёнка потеряет условие.</td></tr>
+        <tr><td><code>Not(Not(p))</code></td><td><code>optimize(p)</code></td><td>После снятия оболочки внутреннее дерево ещё может упрощаться.</td></tr>
+        <tr><td><code>Eq(lit(x), lit(y))</code></td><td><code>Boolean(x === y)</code></td><td>Текущий AST использует отдельный Predicate-узел; исходный acceptance-тест курса ожидает другой контракт.</td></tr>
+        <tr><td><code>Or(p, p)</code></td><td><code>p</code></td><td>Идемпотентность: повтор того же условия не добавляет строк.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Карта констант</h2>
+    <dl class="assignment-map">
+      <dt>Постоянный TRUE</dt>
+      <dd><code>Boolean(true)</code> внутри AST; на границе <code>where?</code> такой результат удаляет свойство <code>where</code>.</dd>
+      <dt>Постоянный FALSE</dt>
+      <dd><code>Boolean(false)</code>, включая результат пустого <code>Or()</code>; компилируется в SQL <code>FALSE</code>.</dd>
+      <dt>SQL UNKNOWN</dt>
+      <dd>Возникает при обычных сравнениях с <code>NULL</code>. Это третье значение, не JavaScript <code>false</code>.</dd>
+    </dl>
+
+    <h2>Контекст имеет значение</h2>
+    <pre><code>p AND TRUE  → p
+p OR  TRUE  → TRUE
+NOT TRUE    → FALSE</code></pre>
+    <p>Поэтому нельзя механически «выкидывать <code>Boolean(true)</code>» из любого списка детей. В <code>And</code> это корректно; в <code>Or</code> такой ребёнок делает весь результат истинным.</p>
+
+    <h2>Порядок обхода</h2>
+    <ol class="timeline">
+      <li><strong>Распознать вариант</strong><span>Narrowing по полю <code>_tag</code>.</span></li>
+      <li><strong>Обработать детей</strong><span>Рекурсивно построить новые узлы или константы.</span></li>
+      <li><strong>Нормализовать родителя</strong><span>Применить правило по числу и значениям детей.</span></li>
+      <li><strong>Вернуть новый результат</strong><span>Не присваивать в поля исходного AST.</span></li>
+    </ol>
+
+    <h2>Проверки, которые ловят реальные ошибки</h2>
+    <ul>
+      <li>Вложенность: <code>Not(Not(And(p))) → p</code>.</li>
+      <li>Потеря ребёнка: <code>And(p, q)</code> сохраняет оба условия.</li>
+      <li>Постоянная истина: <code>Eq(lit(1), lit(1)) → Boolean(true)</code> в текущей реализации.</li>
+      <li>Граница запроса: <code>Boolean(true)</code> в <code>where</code> становится отсутствующим свойством <code>where</code>.</li>
+      <li>Неизменность: входной объект после вызова структурно прежний.</li>
+    </ul>
+
+    <h2>Первичные источники</h2>
+    <ul>
+      <li><a href="https://www.typescriptlang.org/docs/handbook/2/narrowing.html#discriminated-unions">TypeScript Handbook: Discriminated unions</a>.</li>
+      <li><a href="https://tc39.es/ecma262/multipage/abstract-operations.html#sec-isstrictlyequal">ECMAScript: IsStrictlyEqual</a>.</li>
+      <li><a href="https://www.postgresql.org/docs/current/functions-logical.html">PostgreSQL: Logical Operators</a>.</li>
+      <li><a href="https://www.postgresql.org/docs/current/functions-comparison.html">PostgreSQL: Comparison Functions and Operators</a>.</li>
+    </ul>
+
+    <footer>Справочник — подсказка после первой самостоятельной попытки. Если правило кажется двусмысленным, сначала выпиши вход, выход и смысл обоих вариантов, затем спроси агента.</footer>
+  </article>
+</main>
+</body>
+</html>

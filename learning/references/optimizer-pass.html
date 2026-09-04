@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Справочник — проход оптимизатора для Predicate AST</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+</head>
+<body>
+<main>
+  <article>
+    <header>
+      <p class="eyebrow">Справочник · Free/AST · E2.3</p>
+      <h1>Проход оптимизатора: карта решений</h1>
+      <p class="lede">Короткая опора для реализации чистого нижневосходящего преобразования <code>Predicate AST → Predicate AST</code>.</p>
+      <p class="meta"><a href="../lessons/0006-e2-3-optimizer-pass.html">← Урок E2.3</a> · <a href="../lessons/0008-constant-predicate-boundary.html">Урок о constant folding</a> · <a href="../records/index.md">Записи</a> · <a href="../index.html">Карта обучения</a></p>
+    </header>
+
+    <h2>Контракт текущего проекта</h2>
+    <dl class="assignment-map">
+      <dt>Вход</dt>
+      <dd><code>Predicate</code> из <code>src/compiler/ir.ts</code>.</dd>
+      <dt>Выход</dt>
+      <dd><code>Predicate</code>. Постоянные результаты представлены узлом <code>Boolean</code>, чтобы тип результата оставался в AST.</dd>
+      <dt>Проход по statement</dt>
+      <dd><code>optimizeSelect</code> удаляет свойство <code>where</code> только для <code>Boolean(true)</code>; ложное условие остаётся и компилируется в <code>WHERE FALSE</code>.</dd>
+      <dt>Чистота</dt>
+      <dd>Вход не меняется. Допустимо переиспользовать неизменившиеся readonly-узлы; запрещены <code>push</code>, присваивания полям входа и изменение входных массивов.</dd>
+    </dl>
+
+    <div class="panel insight">
+      <p><strong>Не записывай <code>where: undefined</code>.</strong> При <code>exactOptionalPropertyTypes: true</code> свойство <code>where?: Predicate</code> должно либо отсутствовать, либо содержать <code>Predicate</code>. Для результата без фильтра пересобери <code>SelectIR</code> без ключа <code>where</code>.</p>
+    </div>
+
+    <div class="panel warning">
+      <p><strong>В источнике есть противоречие.</strong> Текст E2.3 требует <code>Eq(lit(x), lit(y)) → lit(x === y)</code>, но <code>Literal</code> входит в <code>Expr</code>, а не в <code>Predicate</code>. Текущий проект решает эту границу отдельным Predicate-узлом <code>Boolean</code>; acceptance-пример курса ожидает старый контракт с <code>null</code>.</p>
+    </div>
+
+    <h2>Порядок обхода</h2>
+    <ol class="timeline">
+      <li><strong>Разобрать тег</strong><span><code>_tag</code> определяет форму и дочерние узлы.</span></li>
+      <li><strong>Обойти детей</strong><span>Сначала нормализовать вложенные предикаты.</span></li>
+      <li><strong>Пересобрать</strong><span>Создать узел из уже нормализованных детей.</span></li>
+      <li><strong>Свернуть локально</strong><span>Применить правило текущего тега.</span></li>
+    </ol>
+    <p>Такой обход после детей (post-order traversal) позволяет одному внешнему правилу увидеть уже упрощённый внутренний AST.</p>
+
+    <h2>Таблица правил E2.3</h2>
+    <table>
+      <thead><tr><th>Входная форма</th><th>Нормальная форма</th><th>Смысл</th></tr></thead>
+      <tbody>
+        <tr><td><code>And()</code></td><td><code>Boolean(true)</code></td><td>Пустая конъюнкция истинна; верхний WHERE не нужен.</td></tr>
+        <tr><td><code>And(p)</code></td><td><code>p′</code></td><td>Одиночная оболочка ничего не добавляет.</td></tr>
+        <tr><td><code>Not(Not(p))</code></td><td><code>p′</code></td><td>Две инверсии взаимно уничтожаются.</td></tr>
+        <tr><td><code>Eq(Literal(x), Literal(y))</code></td><td><code>Boolean(x === y)</code></td><td>Свернуть только в явно выбранном домене литералов.</td></tr>
+        <tr><td><code>Or(p, p)</code></td><td><code>p′</code></td><td>Идемпотентность OR; заранее определить смысл равенства AST.</td></tr>
+        <tr><td>любой другой узел</td><td>тот же тег с детьми <code>′</code></td><td>Структура сохраняется, дети уже оптимизированы.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Константы без изменения IR</h2>
+    <p>Текущий compiler уже задаёт две канонические формы:</p>
+    <ul>
+      <li><code>Boolean(true)</code> компилируется в <code>TRUE</code>; на верхней границе его можно заменить отсутствующим WHERE.</li>
+      <li><code>Boolean(false)</code> компилируется в <code>FALSE</code>; его нельзя заменять отсутствием WHERE.</li>
+    </ul>
+    <p>Явный Boolean сохраняет константу внутри <code>Predicate</code> и делает рекурсивные правила композиционными: в <code>And</code> истинный ребёнок удаляется, а в <code>Or</code> истинный ребёнок завершает весь результат.</p>
+
+    <h2>Равенство для дедупликации</h2>
+    <ul>
+      <li><strong>Минимальный контракт курса:</strong> два аргумента — один и тот же объект <code>p</code>. Тогда достаточно тождественности ссылок (reference identity).</li>
+      <li><strong>Расширенный контракт:</strong> отдельно созданные, но одинаковые деревья тоже считаются дублями. Тогда нужно явное структурное равенство AST (AST-specific structural equality).</li>
+      <li><strong>Не использовать вслепую:</strong> <code>JSON.stringify</code>. Значение <code>Literal.value</code> имеет тип <code>unknown</code>; <code>BigInt</code>, <code>undefined</code>, порядок ключей и циклические объекты делают сериализацию ненадёжным определением равенства.</li>
+    </ul>
+
+    <h2>Граница корректности SQL</h2>
+    <p>SQL использует трёхзначную логику: кроме TRUE и FALSE существует UNKNOWN. PostgreSQL прямо показывает, что <code>NULL = NULL</code> даёт UNKNOWN, хотя JavaScript-выражение <code>null === null</code> даёт <code>true</code>. Поэтому свёртка констант (constant folding) через JS <code>===</code> безопасна только для домена литералов, который упражнение явно ограничивает. Для E2.3 достаточно примитивных тестовых значений, кроме <code>null</code>; расширение домена требует отдельной семантики.</p>
+
+    <h2>Минимальная проверочная матрица</h2>
+    <ul>
+      <li>Каждое из пяти правил по отдельности.</li>
+      <li>Один вложенный пример, который провалится при обходе только корня.</li>
+      <li><code>optimizeSelect</code>: пустой AND превращается именно в <code>where === undefined</code>.</li>
+      <li>Исходный AST после вызова структурно равен снимку до вызова.</li>
+      <li>TypeScript принимает все ветки без <code>any</code> и unsafe assertions.</li>
+    </ul>
+
+    <h2>Источники</h2>
+    <ul>
+      <li><a href="../../../../Documents/bat-school/orm/BatSchool%20%C2%B7%20%D0%A1%D0%B2%D0%BE%D1%8F%20ORM%20%D0%BD%D0%B0%20TypeScript%20%2B%20Effect.ts.html">Сохранённая глава BatSchool</a> — формулировка E2.3 и acceptance-пример.</li>
+      <li><a href="https://www.typescriptlang.org/docs/handbook/2/narrowing.html#discriminated-unions">TypeScript Handbook: discriminated unions</a> — narrowing по <code>_tag</code>.</li>
+      <li><a href="https://www.postgresql.org/docs/current/functions-logical.html">PostgreSQL: Logical Operators</a> — таблицы трёхзначной логики.</li>
+      <li><a href="https://www.postgresql.org/docs/current/functions-comparison.html">PostgreSQL: Comparison Functions and Operators</a> — поведение сравнений с <code>NULL</code>.</li>
+    </ul>
+
+    <footer>Это справочник, не готовая реализация. Если ветка вызывает сомнение, сформулируй её как «вход → ожидаемый AST → почему эквивалентно» и спроси агента.</footer>
+  </article>
+</main>
+</body>
+</html>
