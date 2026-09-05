@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Урок 0011 — один SQL, много массивов постов</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+  <script defer src="../assets/interactive-components.js"></script>
+</head>
+<body>
+<main><article>
+  <header>
+    <p class="eyebrow">E2.6 · первая граница · 7 минут</p>
+    <h1>Один SQL.<br>Много ответов.</h1>
+    <p class="lede">Научиться отделять физический SQL-батч от логических запросов и не потерять пользователя, у которого нет постов.</p>
+    <p class="meta"><a href="../index.html">Карта обучения</a> · <a href="../references/effect-request-one-to-many.html">Памятка</a> · <a href="../../src/query/typed-run.ts">Текущий run</a></p>
+  </header>
+
+  <section id="target">
+    <h2>Контракт E2.6</h2>
+    <p>Три конкурентных вызова <code>getPostsByUserId(1 | 2 | 3)</code> должны создать <strong>три логических результата</strong>, но resolver выполняет <strong>один физический SQL</strong> с <code>WHERE userId IN (...)</code>.</p>
+    <div class="panel insight">
+      <p><strong>Главная новая сложность — кардинальность один-ко-многим (one-to-many).</strong> Пример курса <code>getUserById</code> строит индекс <code>id → User</code>. В E2.6 нужен индекс <code>userId → Post[]</code>. Замена значения в <code>Map</code> с одного объекта на массив меняет алгоритм раздачи ответов.</p>
+    </div>
+    <p>В проекте уже есть необходимые нижние части: <a href="../../src/query/predicates.ts"><code>isIn</code></a>, <a href="../../src/query/statements.ts"><code>selectAll</code></a>, <a href="../../src/query/typed-run.ts"><code>run</code></a> и сервис <a href="../../src/drivers/driver.ts"><code>Driver</code></a>. Таблицы <code>posts</code> и DataLoader пока нет — их предстоит написать тебе.</p>
+  </section>
+
+  <section id="model">
+    <h2>Две роли, которые нельзя смешивать</h2>
+    <dl class="assignment-map">
+      <dt><code>Request</code></dt>
+      <dd>Описывает одно логическое желание: «дай все посты пользователя X». Payload хранит <code>userId</code>; success-тип описывает массив постов; error и services сохраняют <code>DriverError</code> и <code>Driver</code>.</dd>
+      <dt><code>RequestResolver</code></dt>
+      <dd>Получает несколько ожидающих <code>Request.Entry</code>, выполняет общую работу и завершает каждый entry его собственным результатом.</dd>
+      <dt>SQL</dt>
+      <dd>Возвращает плоский набор строк для всех запрошенных пользователей. SQL не знает, какой entry ждёт какой подмассив.</dd>
+      <dt><code>groupBy</code></dt>
+      <dd>Восстанавливает потерянную границу: группирует плоские строки в <code>Map&lt;userId, Post[]&gt;</code>.</dd>
+    </dl>
+    <p>Тип success одного request — не «весь результат батча», а результат <strong>одного</strong> <code>userId</code>. В стиле текущего проекта это естественно записать как <code>ReadonlyArray&lt;Post&gt;</code>; упражнение использует эквивалентную по форме запись <code>Post[]</code>.</p>
+  </section>
+
+  <section id="flow">
+    <h2>Проследи данные слева направо</h2>
+    <ol class="timeline">
+      <li><strong>Собрать</strong><span>Из каждого entry взять <code>entry.request.userId</code>.</span></li>
+      <li><strong>Загрузить</strong><span>Один <code>SELECT ... WHERE userId IN (...)</code>.</span></li>
+      <li><strong>Сгруппировать</strong><span>Каждую строку добавить в массив по её <code>row.userId</code>.</span></li>
+      <li><strong>Раздать</strong><span>Каждый entry завершить массивом своей группы или <code>[]</code>.</span></li>
+    </ol>
+    <pre><code>entries: userId 1, userId 2, userId 3
+                         │
+                         ▼
+SQL rows: P10(userId=1), P11(userId=1), P30(userId=3)
+                         │
+                         ▼
+index: 1 → [P10, P11]
+       3 → [P30]
+                         │
+                         ▼
+answers: request(1) → [P10, P11]
+         request(2) → []
+         request(3) → [P30]</code></pre>
+    <div class="panel warning">
+      <p><strong>Entry для userId=2 нельзя пропустить.</strong> Публичный контракт <a href="https://unpkg.com/effect@4.0.0-rc.108/src/RequestResolver.ts"><code>RequestResolver</code></a> требует завершить все принятые entry. Если resolver успешно закончится, оставив entry незавершённым, runtime завершит его дефектом «RequestResolver did not complete request». Отсутствие постов — успешный пустой массив, не отсутствие ответа.</p>
+    </div>
+  </section>
+
+  <section id="pseudocode">
+    <h2>Алгоритм без готовой реализации</h2>
+    <p>Это схема ответственности, а не вставляемый TypeScript:</p>
+    <pre><code>resolver(entries):
+  userIds = взять userId из каждого entry
+  rows = выполнить один select posts where userId in userIds
+
+  byUserId = пустой индекс
+  для каждой row:
+    добавить row в массив byUserId[row.userId]
+
+  для каждого entry:
+    posts = byUserId[entry.request.userId] или пустой массив
+    завершить entry успешным posts</code></pre>
+    <p>Ошибка общего SQL не превращается в <code>[]</code>: это настоящая <code>DriverError</code>. Пустой массив означает только «SQL выполнился, но строк для этого пользователя нет».</p>
+  </section>
+
+  <section id="scheduling">
+    <h2>Почему вызовы должны встретиться</h2>
+    <p>В установленном <code>effect@4.0.0-rc.108</code> <code>RequestResolver.make</code> откладывает запуск батча через <code>Effect.yieldNow</code>. Конкурентные request успевают попасть в один ожидающий batch; последовательный <code>yield*</code> ждёт первый ответ до создания второго request.</p>
+    <pre><code>Effect.forEach([1, 2, 3], getPostsByUserId,
+  { concurrency: "unbounded" })
+// наблюдение: resolver получает [1, 2, 3]
+
+const a = yield* getPostsByUserId(1)
+const b = yield* getPostsByUserId(2)
+// наблюдение: resolver получает [1], затем [2]</code></pre>
+    <p>Изолированный запуск на текущей версии подтвердил именно эти батчи. Он также показал, что одинаковые request <code>[1, 1, 2]</code> доходят до resolver как <code>[1, 1, 2]</code>. Поэтому не опирайся на утверждение курса об автоматической дедупликации: в этой RC её нет в <a href="https://unpkg.com/effect@4.0.0-rc.108/src/internal/request.ts">реализации request batching</a>.</p>
+  </section>
+
+  <section id="check">
+    <h2>Проверка границы</h2>
+    <p>Общий SQL успешно вернул посты только для userId 1 и 3. Что должен получить request для userId 2?</p>
+    <learning-check>
+      <section class="lab-shell" aria-label="Проверка one-to-many контракта">
+        <div class="quiz-options">
+          <button type="button" data-answer="wrong" data-feedback="null смешивает два состояния: успешное отсутствие строк и отсутствие результата. Контракт request обещает массив постов.">одна строка или значение null</button>
+          <button type="button" data-answer="correct" data-feedback="Да. SQL выполнился успешно, группа существует логически, но содержит ноль строк. Entry завершается Exit.succeed([]).">массив постов, возможно пустой массив</button>
+          <button type="button" data-answer="wrong" data-feedback="Незавершённый entry нарушает контракт resolver и завершится дефектом runtime, а ожидающий fiber не получит корректный success.">вообще не завершать этот запрос</button>
+        </div>
+        <p class="quiz-feedback" aria-live="polite">Сначала объясни причину вслух, затем выбери ответ.</p>
+      </section>
+    </learning-check>
+    <details><summary>Разбор для печати и чтения без JavaScript</summary><p>Правильный ответ — пустой массив. <code>[]</code> является корректным значением отношения «у пользователя ноль постов» и сохраняет единый success-тип для всех userId.</p></details>
+  </section>
+
+  <section id="next">
+    <h2>Первое пользовательское действие</h2>
+    <p>Пока не пиши resolver. Сначала опиши агенту четырьмя строками контракт будущего request:</p>
+    <pre><code>payload  = ?
+success  = ?
+error    = ?
+services = ?</code></pre>
+    <p>Затем одним предложением объясни, почему <code>success</code> относится к одному <code>userId</code>, хотя SQL обслуживает весь batch. По ответу выберем следующий шаг: тип request либо механический проход <code>entries → ids → rows → groups → completion</code>.</p>
+  </section>
+
+  <h2>Первоисточник</h2>
+  <p>Начни с публичных контрактов установленной версии: <a href="https://unpkg.com/effect@4.0.0-rc.108/src/Request.ts"><code>Request.ts</code></a> для <code>Request&lt;A, E, R&gt;</code>, <code>TaggedClass</code> и <code>Entry</code>; затем <a href="https://unpkg.com/effect@4.0.0-rc.108/src/RequestResolver.ts"><code>RequestResolver.ts</code></a> для <code>make</code> и обязанности завершить каждый entry.</p>
+
+  <footer>Урок вводит только центральную границу E2.6: один физический batch должен породить отдельный массив для каждого логического request. Задавай агенту любые вопросы по непонятным местам; backend-код и acceptance-тест остаются твоей работой.</footer>
+</article></main>
+</body>
+</html>

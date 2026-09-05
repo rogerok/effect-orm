@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Урок 0010 — где живёт кеш Effect.cached</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+  <script defer src="../assets/interactive-components.js"></script>
+</head>
+<body>
+<main><article>
+  <header>
+    <p class="eyebrow">E2.5 · один механизм · 5 минут</p>
+    <h1>Создать кеш.<br>Использовать кеш.</h1>
+    <p class="lede">Научиться видеть, какие обращения разделяют сохранённый результат, а какие создают независимые места хранения.</p>
+    <p class="meta"><a href="../index.html">Карта обучения</a> · <a href="0004-free-ast-query-boundaries.html">Границы запроса</a> · <a href="../references/cached-effect-lifetime.html">Памятка</a></p>
+  </header>
+  <section id="known">
+    <h2>Уже установлено</h2>
+    <p>Ты верно различил новый объект с прежним содержимым, другой литерал и другой диалект. Повторять это не нужно. Сейчас рассматриваем <strong>один фиксированный запрос и один диалект</strong>: никакого поиска по хешу пока нет.</p>
+  </section>
+  <section id="model">
+    <h2>Два уровня Effect</h2>
+    <p>В <a href="https://unpkg.com/effect@4.0.0-rc.108/src/Effect.ts">установленной версии Effect</a> у <code>cached</code> такая сигнатура:</p>
+    <pre><code>Effect&lt;A, E, R&gt; → Effect&lt;Effect&lt;A, E, R&gt;&gt;</code></pre>
+    <p>Внешний эффект создаёт отдельный кешированный эффект. Внутренний эффект вычисляет результат при первом запуске, а при следующих возвращает сохранённый. Создание кеша само по себе ещё не запускает исходное вычисление.</p>
+    <div class="panel insight"><p><strong>Разделять нужно внутренний эффект.</strong> Если снова выполнить внешний эффект, получится другой кеш. Это следует и из <a href="https://unpkg.com/effect@4.0.0-rc.108/src/internal/effect.ts">реализации cached / cachedWithTTL</a>: состояние создаётся при исполнении внешнего эффекта.</p></div>
+  </section>
+  <section id="trace">
+    <h2>Проследи одно вычисление</h2>
+    <p>Учебный счётчик вместо компилятора. Здесь нет БД и ожидаемых ошибок; <code>Effect.sync</code> откладывает увеличение счётчика до исполнения эффекта.</p>
+    <pre><code>let calls = 0;
+const work = Effect.sync(() =&gt; ++calls);
+const makeCached = Effect.cached(work);
+
+// Внутри Effect.gen:
+const memo = yield* makeCached; // calls = 0
+const first = yield* memo;      // first = 1, calls = 1
+const second = yield* memo;     // second = 1, calls = 1</code></pre>
+    <p><code>makeCached</code> — описание создания кеша. <code>memo</code> — полученный доступ к одному кешу. Два запуска <code>memo</code> обращаются к одному сохранённому результату. Это не глобальное запоминание всех запусков <code>work</code>.</p>
+  </section>
+  <section id="practice">
+    <h2>Теперь измени только место создания</h2>
+    <p>Начни мысленно заново: <code>calls = 0</code>, определения <code>work</code> и <code>makeCached</code> те же. До выбора ответа объясни вслух, сколько здесь отдельных кешей.</p>
+    <pre><code>// Внутри Effect.gen:
+const left = yield* makeCached;
+const right = yield* makeCached;
+yield* left;
+yield* left;
+yield* right;
+yield* right;
+// Чему равен calls?</code></pre>
+    <learning-check>
+      <section class="lab-shell" aria-label="Проверка времени жизни кеша">
+        <div class="quiz-options">
+          <button type="button" data-answer="wrong" data-feedback="Общий work не означает общий кеш. makeCached исполнили два раза: left и right используют разные места хранения.">calls = 1</button>
+          <button type="button" data-answer="correct" data-feedback="Два исполнения makeCached создали два кеша. Первый запуск left увеличил calls до 1, первый запуск right — до 2. Повтор каждого использовал его сохранённый результат.">calls = 2</button>
+          <button type="button" data-answer="wrong" data-feedback="Каждый из двух кешей вычисляет work только при первом обращении. Второй запуск left и второй запуск right не увеличивают счётчик.">calls = 4</button>
+        </div>
+        <p class="quiz-feedback" aria-live="polite">Сначала прогноз и причина, затем проверка.</p>
+      </section>
+    </learning-check>
+    <details><summary>Разбор для печати и чтения без JavaScript</summary><p>Ответ: 2. Созданы два независимых кеша, и каждый вычислил work один раз.</p></details>
+  </section>
+  <section id="transfer">
+    <h2>Перенеси модель в E2.5</h2>
+    <p>В <a href="../../src/compiler/run.ts">текущем run</a> каждый запуск вызывает <code>compile</code>, затем <code>driver.executeRaw</code>. Кешировать нужно результат компиляции, а не строки из БД: повторное обращение к БД должно остаться повторным обращением.</p>
+    <p><code>Effect.cached</code> не принимает IR или ключ. Поиск нужной записи по содержимому IR — отдельная задача. Для одной записи ты теперь знаешь различие между созданием кеша и повторным использованием.</p>
+    <p><strong>Следующее действие:</strong> объясни агенту, что случится, если при каждом вызове будущего <code>compileCache(ir)</code> заново выполнять <code>Effect.cached</code>, и что должно переживать отдельный вызов. Реализацию ORM пока не пиши.</p>
+    <p>Завтра без памятки восстанови два уровня: какой эффект создаёт место хранения и какой пользуется им.</p>
+  </section>
+  <h2>Первоисточник</h2>
+  <p><a href="https://unpkg.com/effect@4.0.0-rc.108/src/Effect.ts">Effect.ts, версия 4.0.0-rc.108</a>: найди <code>export const cached:</code>, прочитай сигнатуру и пример непосредственно над ней. Сейчас не нужны TTL и инвалидация.</p>
+  <footer>Урок проверяет один механизм, а не завершает E2.5. Дальше — структурный хеш и проверка равенства при коллизиях, затем измерение 10 000 обращений. Задавай агенту любые вопросы по непонятным местам; backend-код и тесты остаются твоей работой.</footer>
+</article></main>
+</body>
+</html>

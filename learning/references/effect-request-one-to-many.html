@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Памятка — Effect Request один-ко-многим</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+</head>
+<body>
+<main><article>
+  <header>
+    <p class="eyebrow">Справочник · E2.6</p>
+    <h1>Request batching:<br>один-ко-многим</h1>
+    <p class="lede">Сжатая карта контракта, алгоритма и проверок для <code>getPostsByUserId</code>.</p>
+    <p class="meta"><a href="../index.html">Карта обучения</a> · <a href="../lessons/0011-one-batch-many-post-lists.html">Урок 0011</a></p>
+  </header>
+
+  <h2>Типы</h2>
+  <dl class="assignment-map">
+    <dt>Payload</dt><dd><code>{ readonly userId: number }</code></dd>
+    <dt>Success</dt><dd><code>ReadonlyArray&lt;Post&gt;</code> — массив для одного userId, включая <code>[]</code>.</dd>
+    <dt>Error</dt><dd><code>DriverError</code> — общий SQL действительно завершился ошибкой.</dd>
+    <dt>Services</dt><dd><code>Driver</code> — зависимость сохраняется в типе request и доступна resolver через <code>entry.context</code>.</dd>
+    <dt>Resolver input</dt><dd>Непустой массив <code>Request.Entry&lt;GetPostsByUserId&gt;</code>.</dd>
+  </dl>
+
+  <h2>Пайплайн</h2>
+  <pre><code>entries
+  → userIds
+  → один SELECT ... WHERE userId IN (...)
+  → плоские Post rows
+  → Map&lt;userId, Post[]&gt;
+  → complete каждого entry своей группой или []</code></pre>
+
+  <h2>Инварианты</h2>
+  <ul>
+    <li>Один entry соответствует одному логическому результату, а не всему SQL-батчу.</li>
+    <li>Одна строка SQL добавляется ровно в одну группу по её <code>userId</code>.</li>
+    <li>Порядок entry не обязан совпадать с порядком строк SQL; раздача идёт по ключу.</li>
+    <li>Пользователь без постов получает успешный <code>[]</code>, не <code>null</code> и не ошибку.</li>
+    <li>Каждый принятый entry завершается ровно один раз.</li>
+    <li>Ошибка SQL остаётся typed failure; её нельзя маскировать пустыми массивами.</li>
+  </ul>
+
+  <h2>План группировки</h2>
+  <ol>
+    <li>Создать пустой индекс <code>Map&lt;number, Post[]&gt;</code>.</li>
+    <li>Для каждой строки получить текущую группу по <code>row.userId</code>.</li>
+    <li>Если группы нет — создать её; затем добавить строку.</li>
+    <li>При раздаче читать по <code>entry.request.userId</code> с fallback <code>[]</code>.</li>
+  </ol>
+  <div class="panel warning"><p>Не создавать результат только из строк SQL. Тогда userId без строк исчезнет из индекса. Полный набор ожидаемых ответов задают <strong>entries</strong>, а строки лишь наполняют некоторые группы.</p></div>
+
+  <h2>Когда возникает один batch</h2>
+  <table>
+    <thead><tr><th>Композиция</th><th>Наблюдаемое поведение на rc.108</th></tr></thead>
+    <tbody>
+      <tr><td><code>Effect.forEach(..., { concurrency: "unbounded" })</code></td><td>Request создаются до запуска resolver и встречаются в одном batch.</td></tr>
+      <tr><td>Последовательные <code>yield*</code></td><td>Первый request ждёт resolver; следующий появляется позже и попадает в новый batch.</td></tr>
+      <tr><td>Одинаковые ключи <code>[1, 1, 2]</code></td><td>Resolver получает <code>[1, 1, 2]</code>; автоматической дедупликации в текущей RC нет.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Минимальная проверка контракта</h2>
+  <ul>
+    <li>Запросить userId <code>1, 2, 3</code> конкурентно.</li>
+    <li>Подготовить два поста для 1, ноль для 2, один для 3.</li>
+    <li>Проверить точные три массива, включая <code>[]</code> для 2.</li>
+    <li>Проверить <code>queryCount === 1</code>.</li>
+    <li>Отдельно убедиться, что SQL содержит <code>IN</code> и все параметры.</li>
+  </ul>
+
+  <h2>Первоисточники</h2>
+  <ul>
+    <li><a href="https://unpkg.com/effect@4.0.0-rc.108/src/Request.ts">Request.ts rc.108</a> — тип request, TaggedClass и Entry.</li>
+    <li><a href="https://unpkg.com/effect@4.0.0-rc.108/src/RequestResolver.ts">RequestResolver.ts rc.108</a> — make, batching delay и completion contract.</li>
+    <li><a href="https://unpkg.com/effect@4.0.0-rc.108/src/internal/request.ts">internal/request.ts rc.108</a> — фактическая сборка batch и поведение незавершённых entry.</li>
+  </ul>
+
+  <footer>Памятка предназначена для сверки после первой самостоятельной попытки. Если любой переход в пайплайне неочевиден, вернись к уроку 0011 или спроси агента.</footer>
+</article></main>
+</body>
+</html>

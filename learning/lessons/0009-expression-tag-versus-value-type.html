@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Урок 0009 — вид узла и тип его значения</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+  <script defer src="../assets/interactive-components.js"></script>
+</head>
+<body>
+<main><article>
+  <header>
+    <p class="eyebrow">E2.4 · типизированная обёртка · 5 минут</p>
+    <h1>Один _tag.<br>Разные типы значений.</h1>
+    <p class="lede">Научиться объяснять, почему TypeScript различает Expr&lt;number&gt; и Expr&lt;string&gt;, хотя оба могут описывать Literal.</p>
+    <p class="meta"><a href="../index.html">Карта обучения</a> · <a href="0007-ast-optimizer-from-frontend.html">Знакомая модель AST</a> · <a href="../references/expression-type-marker.html">Памятка</a></p>
+  </header>
+  <section id="counterexample">
+    <h2>1. Почему не _tag</h2>
+    <p>Твой прогноз об ошибке типов верен. Но <code>_tag</code> отвечает на вопрос «какой это узел?», а не «какого типа его значение?». Оба объекта ниже — литералы:</p>
+    <pre><code>{ _tag: 'Literal', value: 18 }
+{ _tag: 'Literal', value: '18' }</code></pre>
+    <p>В <a href="../../src/compiler/ir.ts">чистом IR</a> поле <code>Literal.value</code> объявлено как <code>unknown</code>. После сужения по <code>_tag === 'Literal'</code> оно остаётся <code>unknown</code>: строку от числа этот тег не отличает.</p>
+  </section>
+  <section id="marker">
+    <h2>2. Где сохраняется число</h2>
+    <p>В <a href="../../src/query/typed-ast.ts">твоём Expr&lt;T&gt;</a> к форме узла добавлен маркер:</p>
+    <pre><code>declare const Brand: unique symbol;
+type Expr&lt;T = unknown&gt; = { readonly [Brand]?: T } &amp; ExprIR;</code></pre>
+    <p><code>ExprIR</code> описывает форму узла. <code>[Brand]?: T</code> сохраняет в его типе информацию о типе значения выражения. Это <strong>фантомный маркер (phantom brand)</strong>: текущие конструкторы не создают такое свойство в объекте, но TypeScript учитывает его в типах.</p>
+    <pre><code>Expr&lt;number&gt; → у маркера тип number
+Expr&lt;string&gt; → у маркера тип string</code></pre>
+    <p>Само имя параметра <code>T</code> ничего не защищает. Оно влияет на совместимость, потому что используется в типе свойства. Это правило <a href="https://www.typescriptlang.org/docs/handbook/type-compatibility.html#generics">структурной совместимости TypeScript</a>.</p>
+    <p>Знак <code>?</code> разрешает отсутствие свойства. Он не делает несовместимые объявленные типы этого свойства одинаковыми.</p>
+  </section>
+  <section id="between">
+    <h2>3. Как это помогает between</h2>
+    <p>У <a href="../../src/query/predicates.ts">типизированного between</a> все три параметра записаны как <code>Expr&lt;T&gt;</code>. В нашем примере TypeScript выводит <code>T = number</code> и отвергает строковую нижнюю границу. Из фактической диагностики установленного компилятора:</p>
+    <pre><code>TS2345: Expr&lt;string&gt; is not assignable to Expr&lt;number&gt;.
+Types of property '[Brand]' are incompatible.</code></pre>
+    <div class="panel insight"><p><strong>Две разные задачи:</strong> <code>_tag</code> выбирает способ обработки узла; <code>T</code>, сохранённый маркером, связывает типы значений аргументов.</p></div>
+    <p>Это проверка до исполнения, не runtime-валидатор. <a href="https://www.typescriptlang.org/docs/handbook/2/basic-types.html#erased-types">Аннотации типов стираются</a>; конструктор сам по себе не проверяет данные из внешнего мира. Расширение до <code>unknown</code> или переход к чистому IR ослабляет эту защиту.</p>
+  </section>
+  <section id="practice">
+    <h2>4. Прогноз без правки проекта</h2>
+    <p>Мысленно убери маркер из определения, оставив <code>type Expr&lt;T&gt; = ExprIR</code>. Сигнатуру <code>between</code> не меняй. Сохранится ли ошибка для числового выражения со строковыми границами?</p>
+    <learning-check>
+      <section class="lab-shell" aria-label="Проверка роли маркера">
+        <div class="quiz-options">
+          <button type="button" data-answer="correct" data-feedback="Ошибка исчезнет: T больше не участвует в структуре. Expr<number> и Expr<string> обозначают один ExprIR; одинаковый _tag различие не восстановит.">Ошибка типов исчезнет</button>
+          <button type="button" data-answer="wrong" data-feedback="Проверь, где теперь используется T. После удаления маркера обе подстановки дают один ExprIR. _tag отличает Column от Literal, но не число от строки.">Ошибка типов останется</button>
+        </div>
+        <p class="quiz-feedback" aria-live="polite">Сначала сформулируй причину, затем выбери ответ.</p>
+      </section>
+    </learning-check>
+    <p>После выбора объясни ответ агенту своими словами. Завтра, не открывая код, восстанови два вопроса: что сообщает <code>_tag</code> и что сообщает <code>T</code>.</p>
+  </section>
+  <h2>Один первоисточник</h2>
+  <p><a href="https://www.typescriptlang.org/docs/handbook/type-compatibility.html#generics">TypeScript Handbook: Type Compatibility → Generics</a>. Прочитай только сравнение <code>Empty&lt;T&gt;</code> и <code>NotEmpty&lt;T&gt;</code>: оно объясняет механизм маркера без терминологии ORM.</p>
+  <footer>Этот урок закрывает один обнаруженный пробел E2.4, а не объявляет упражнение освоенным. Задавай агенту любые уточняющие вопросы. Backend-код пока не меняй.</footer>
+</article></main>
+</body>
+</html>

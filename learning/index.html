@@ -17,9 +17,9 @@
 
     <h2>Сейчас</h2>
     <div class="panel success">
-      <p class="kicker">Последний результат · E2.3 завершён</p>
-      <p>Полный проход оптимизатора с явным Boolean-предикатом подтверждён в коде и записях обучения. Для повторения начни с дерева AST, затем пройди E2.3 и сверь решение со справочниками.</p>
-      <p><a href="lessons/0007-ast-optimizer-from-frontend.html">Начать повторение: AST →</a> · <a href="records/0015-e2-3-explicit-boolean-optimizer-complete.md">Открыть запись результата</a></p>
+      <p class="kicker">Текущий шаг · E2.6 DataLoader</p>
+      <p>Различить три логических результата <code>getPostsByUserId</code> и один физический SQL-батч, затем восстановить отдельный массив постов для каждого <code>userId</code>.</p>
+      <p><a href="lessons/0011-one-batch-many-post-lists.html">Урок 0011: один SQL, много ответов →</a> · <a href="references/effect-request-one-to-many.html">Короткая памятка</a></p>
     </div>
 
     <h2>Как ориентироваться</h2>
@@ -45,6 +45,12 @@
       <li><a href="lessons/0007-ast-optimizer-from-frontend.html">Урок 0007 — оптимизатор AST с нуля</a> — вводный шаг</li>
       <li><a href="lessons/0006-e2-3-optimizer-pass.html">Урок 0006 — полный маршрут E2.3</a> — основной проход</li>
       <li><a href="lessons/0008-constant-predicate-boundary.html">Урок 0008 — константный предикат на границе WHERE</a> — граница constant folding</li>
+      <li><a href="lessons/0009-expression-tag-versus-value-type.html">Урок 0009 — вид узла и тип значения</a> — обнаруженный пробел E2.4</li>
+      <li><a href="references/expression-type-marker.html">Памятка — _tag и фантомный маркер</a></li>
+      <li><a href="lessons/0010-cached-effect-lifetime.html">Урок 0010 — время жизни Effect.cached</a> — следующий механизм E2.5</li>
+      <li><a href="references/cached-effect-lifetime.html">Памятка — создание и использование кеша</a></li>
+      <li><a href="lessons/0011-one-batch-many-post-lists.html">Урок 0011 — один SQL, много массивов постов</a> — первая граница E2.6</li>
+      <li><a href="references/effect-request-one-to-many.html">Памятка — Effect Request один-ко-многим</a></li>
       <li><a href="references/free-ast-query-pipeline.html">Справочник — Free/AST-пайплайн запросов</a></li>
       <li><a href="references/optimizer-pass.html">Справочник — optimizer pass для Predicate AST</a></li>
       <li><a href="references/ast-tree-basics.html">Справочник — AST с точки зрения фронтенд-разработчика</a></li>
@@ -61,7 +67,7 @@
       <li><a href="research/effect-pool-concepts.md">Исследование — механика resource pool</a></li>
     </ul>
 
-    <h2>Оставшийся маршрут</h2>
+    <h2>Прежний маршрут для возвращения</h2>
     <ol class="timeline">
       <li><strong>Повторение · AST</strong><span>Пройти урок 0007 и вслух объяснить вложенность обычных JavaScript-объектов.</span></li>
       <li><strong>E2.3 · сверка контракта</strong><span>Сопоставить явный Boolean-предикат текущего кода с исходным acceptance-примером курса.</span></li>
@@ -69,7 +75,7 @@
       <li><strong>2.5 и повторение</strong><span>Восстановить Effect-helper, затем повторить весь минимальный путь через интервал.</span></li>
     </ol>
 
-    <footer>Материалы после раздела 2.5 в текущий маршрут не входят.</footer>
+    <footer>Текущая миссия — самостоятельно выполнить E2.6. Начальная проверка: описать тип одного request и объяснить, как один плоский SQL-результат превращается в отдельный массив для каждого ожидающего entry.</footer>
   </article>
 </main>
 </body>

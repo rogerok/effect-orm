@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Памятка — _tag и фантомный маркер</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+</head>
+<body><main><article>
+  <header>
+    <p class="eyebrow">E2.4 · короткая опора</p>
+    <h1>Вид узла ≠ тип значения</h1>
+    <p class="meta"><a href="../lessons/0009-expression-tag-versus-value-type.html">Урок 0009</a> · <a href="free-ast-query-pipeline.html">Путь запроса</a> · <a href="../index.html">Карта обучения</a></p>
+  </header>
+  <h2 id="glossary">Мини-словарь</h2>
+  <dl class="assignment-map">
+    <dt>Различающий тег (discriminant)</dt><dd><code>_tag</code> выбирает вариант объединения: <code>Column</code> или <code>Literal</code>. Есть в объекте во время исполнения.</dd>
+    <dt>Параметр типа (type parameter)</dt><dd><code>T</code> в <code>Expr&lt;T&gt;</code> обозначает тип значения выражения, а не вид узла.</dd>
+    <dt>Фантомный маркер (phantom brand)</dt><dd><code>[Brand]?: T</code> делает T частью структуры типа. Текущие конструкторы не создают это свойство в объекте.</dd>
+    <dt>Типизированная обёртка (typed wrapper)</dt><dd>Сохраняет или связывает информацию о типах поверх чистого IR. Не заменяет проверку внешних данных во время исполнения.</dd>
+  </dl>
+  <h2>Как читать ошибку E2.4</h2>
+  <ol>
+    <li>Сверь <code>Expr&lt;number&gt;</code> и <code>Expr&lt;string&gt;</code>, не только их <code>_tag</code>.</li>
+    <li>Найди, где параметр T используется в структуре: здесь это <code>[Brand]?: T</code>.</li>
+    <li>Посмотри, какую связь задаёт сигнатура: у типизированного <code>between</code> три <code>Expr&lt;T&gt;</code>.</li>
+    <li>В исходном прогнозе TypeScript выводит T как number и указывает на несовместимость свойства <code>[Brand]</code> у строковой границы.</li>
+  </ol>
+  <div class="panel warning"><p><strong>Граница гарантии.</strong> Неиспользуемый T ничего не различает. Необязательный маркер — не защита от создания сырых объектов; <code>Expr&lt;unknown&gt;</code> также не сохраняет различие числа и строки. Проверка типов не проверяет фактическую схему БД.</p></div>
+  <h2>Первоисточники</h2>
+  <ul>
+    <li><a href="https://www.typescriptlang.org/docs/handbook/type-compatibility.html#generics">TypeScript: совместимость обобщённых типов</a>.</li>
+    <li><a href="https://www.typescriptlang.org/docs/handbook/2/basic-types.html#erased-types">TypeScript: стирание типов</a>.</li>
+    <li><a href="../../src/query/typed-ast.ts">Expr&lt;T&gt; в текущем проекте</a>.</li>
+  </ul>
+  <footer>Сначала собственный прогноз, затем памятка. Возвращайся к уроку или задай агенту вопрос, если причина несовместимости остаётся неясной.</footer>
+</article></main></body>
+</html>
