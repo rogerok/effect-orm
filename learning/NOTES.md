@@ -242,3 +242,20 @@
 - Исправленный memory run создал оба snapshot: before 20,564,647 B, after 20,636,032 B; LSP чистый. После forced GC `heapUsed` снизился с 27,393,424 до 26,798,632 B (−594,792 B), `heapTotal` снизился на 5 MiB, `external` снизился на 1,061,976 B, `arrayBuffers` не изменился. Это свидетельство отсутствия миллиона удержанных JS row-объектов после fold. RSS вырос на 99,368,960 B (~94.77 MiB), но его нельзя приписать scan: первая heap snapshot строится после before memory sample и сама временно может удвоить heap; allocator может не вернуть страницы ОС. Финальная проверка понимания — объяснить, почему heapUsed поддерживает вывод о retention, а RSS delta не доказывает leak или peak scan.
 - Пользователь не смог интерпретировать расхождение heapUsed↓ и RSS↑. Перейти к числовому контрпримеру: snapshot временно запрашивает у ОС ~100 MiB, затем JS-объекты освобождаются, но allocator сохраняет страницы; heapUsed считает живые V8 objects после forced GC, RSS — все принадлежащие процессу resident pages. Следующая проверка должна быть бинарной: мог бы heapUsed остаться ~27 MiB после GC, если бы достижимый массив действительно удерживал миллион row objects?
 - Пользователь правильно ответил на бинарный контрпример: forced GC не смог бы вернуть `heapUsed` к исходному уровню, если бы достижимый массив удерживал миллион строк. Граница retained V8 heap против RSS подтверждена и записана в [0028](records/0028-heap-retention-versus-rss.md). Обязательная часть E2.7 завершена: typed adapter, SQLite integration test, миллионный fold, before/after snapshots и корректная интерпретация retention.
+
+## Текущий запрос: инициализация маршрута урока 3
+
+- Пользователь переходит к уроку 3 курса — Phantom-typed Builder. Backend-код в рамках инициализации не менять.
+- E2.7 завершён и остаётся подтверждённой опорой; старая `MISSION.md` больше не должна направлять следующие занятия.
+- Созданы `curriculum.md`, `roadmap.md`, `progress.md`, `concepts.md`, `mistakes.md` и `session.md`.
+- Текущая точка — L3.0: разделить runtime `BuilderState`, type-only `SourceMap`/`R` и dependency `Driver`.
+- Первый implementation step после диагностики ограничен `Db.selectFrom(table, alias)` для одной таблицы. Не добавлять join, projection, execute или Repository тем же шагом.
+- Оценки mastery консервативны: type-state FSM, SourceMap, aliases/JOIN и LEFT JOIN nullability остаются `unknown`; phantom marker оценён в 2 до нового самостоятельного объяснения.
+- Полный маршрут строит ORM-пакет как продукт: read/write builder → Repository → transactions/Unit of Work → migrations → public package. Relations DSL, replicas и HTTP-приложение не входят в core без отдельной потребности.
+
+### L3.0 закрыт
+
+- Пользователь верно классифицировал `from.table`/`joins` (runtime), `keyof S`/`R` (type-only), `Driver` (Environment у `execute()`). `from.alias` сначала отнесён к чистому runtime; двойная жизнь alias установлена через widened-alias прогноз и записана в [0029](records/0029-l3-0-boundary-model-confirmed.md).
+- Изолированные зонды tsc: `{[K in string]: T}` имеет `keyof = string`; TS2693 при использовании generic как значения; `compile` принимает только IR, а `_codec`-функции в `ColumnDef` несовместимы со структурным ключом compile cache.
+- `progress.md` уже переведён на L3.1 (цепи FSM); `session.md` описывает старую границу L3.0→selectFrom и устарел. Следующий шаг — допустимые/недопустимые цепочки FSM и compile-only поверхности двух классов.
+- Phantom marker после нового самостоятельного объяснения (двойная жизнь alias) можно переоценить с 2 на 3 при первом подтверждении в коде билдера.

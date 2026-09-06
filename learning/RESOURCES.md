@@ -3,9 +3,9 @@
 ## Knowledge
 
 - Course: `~/Documents/bat-school/orm/BatSchool · Своя ORM на TypeScript + Effect.ts.html`
-  Основной материал курса. Для текущей миссии использовать раздел 2.8 и упражнение E2.7; разделы 2.6–2.7 остаются опорой для typed `Select<R>`, `selectAll` и компиляции.
-- [Current typed query API](../src/query/typed-ast.ts), [statements](../src/query/statements.ts), [typed run](../src/query/typed-run.ts) и [Driver](../src/drivers/driver.ts)
-  Текущее состояние практической реализации. `executeStream` уже входит в Driver; задача E2.7 начинается с проверки producer-реализаций и проектирования typed adapter, а не с повторного копирования курса.
+  Основной материал курса. Текущая миссия — урок 3, разделы 3.1–3.8: FSM на двух классах, SourceMap, ExpressionBuilder, immutable SelectQueryBuilder и ExecutableQuery. Разделы 2.2–2.8 остаются runtime foundation, которую builder должен переиспользовать.
+- [Current typed query API](../src/query/typed-ast.ts), [statements](../src/query/statements.ts), [typed run](../src/query/typed-run.ts), [typed stream](../src/query/typed-stream.ts) и [Driver](../src/drivers/driver.ts)
+  Текущее состояние практической реализации. Runtime IR/compiler, typed statements, execution и streaming уже существуют; builder начинает с адаптации к ним, а не с нового SQL generator.
 - [TypeScript Handbook: Discriminated unions](https://www.typescriptlang.org/docs/handbook/2/narrowing.html#discriminated-unions)
   Официальная модель размеченных объединений и исчерпывающего разбора вариантов. Использовать для устройства AST и проверки добавления нового `_tag`.
 - [TypeScript Handbook: Generics](https://www.typescriptlang.org/docs/handbook/2/generics.html#hello-world-of-generics)
@@ -14,6 +14,8 @@
   Главный источник урока 0009: параметр типа влияет на совместимость только через структуру, в которой используется. Примеры Empty<T> и NotEmpty<T> объясняют роль фантомного маркера.
 - [TypeScript Handbook: Erased Types](https://www.typescriptlang.org/docs/handbook/2/basic-types.html#erased-types)
   Различие проверки типов и исполнения JavaScript: аннотации не становятся runtime-проверками.
+- [TypeScript Handbook: `keyof`](https://www.typescriptlang.org/docs/handbook/2/keyof-types.html), [indexed access](https://www.typescriptlang.org/docs/handbook/2/indexed-access-types.html), [mapped types](https://www.typescriptlang.org/docs/handbook/2/mapped-types.html) и [conditional types](https://www.typescriptlang.org/docs/handbook/2/conditional-types.html)
+  Основные type-level механизмы урока 3: alias keys, lookup колонок через SourceMap, добавление нового source и вывод result row из projection.
 - [Effect v4: Using generators](https://www.effect.website/docs/v4/getting-started/using-generators)
   Официальное объяснение `Effect.gen`, `yield*`, распространения успеха и ошибки. Использовать для чтения `run`.
 - [Effect v4: Services](https://www.effect.website/docs/v4/requirements-management/services)

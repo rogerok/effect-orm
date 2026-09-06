@@ -19,24 +19,19 @@
         </header>
 
         <h2>Сейчас</h2>
-        <div class="panel success">
-          <p class="kicker">Завершено · E2.7 Stream</p>
+        <div class="panel">
+          <p class="kicker">Старт · Урок 3 Phantom-typed Builder</p>
           <p>
-            Typed adapter сохранил ленивость, SQLite передал строки через
-            <code>stmt.iterate()</code>, миллионный <code>runFold</code> вернул
-            точные count/sum, а before/after snapshots подтвердили отсутствие
-            удержания всех row-объектов в V8 heap.
+            E2.7 завершено. Следующий продуктовый пробел — fluent SELECT поверх
+            существующего AST: сначала runtime/type-level границы и single-table
+            state machine, затем aliases и joins.
           </p>
           <p>
-            <a href="lessons/0012-stream-is-not-an-array.html"
-              >Урок 0012: Stream — не массив →</a
-            >
+            <a href="session.md">Текущая сессия →</a>
             ·
-            <a href="references/streaming-full-table-scan.html">Памятка</a>
+            <a href="progress.md">Прогресс</a>
             ·
-            <a href="records/0028-heap-retention-versus-rss.md"
-              >Итоговая запись</a
-            >
+            <a href="roadmap.md">Пошаговый roadmap</a>
           </p>
         </div>
 
@@ -44,6 +39,20 @@
         <dl class="assignment-map">
           <dt><a href="MISSION.md">MISSION.md</a></dt>
           <dd>Зачем идёт обучение, критерии результата и граница материала.</dd>
+          <dt><a href="curriculum.md">curriculum.md</a></dt>
+          <dd>Фазы развития ORM и критерии mastery по четырём осям.</dd>
+          <dt><a href="roadmap.md">roadmap.md</a></dt>
+          <dd>Маленькие шаги от текущего кода до готового пакета.</dd>
+          <dt><a href="progress.md">progress.md</a></dt>
+          <dd>Текущая фаза и консервативная оценка проверенного владения.</dd>
+          <dt><a href="concepts.md">concepts.md</a></dt>
+          <dd>Карта концепций, prerequisites и способы проверки mastery.</dd>
+          <dt><a href="mistakes.md">mistakes.md</a></dt>
+          <dd>
+            Только наблюдавшиеся ошибки и повторяемые способы диагностики.
+          </dd>
+          <dt><a href="session.md">session.md</a></dt>
+          <dd>Точная точка продолжения следующего учебного шага.</dd>
           <dt><a href="RESOURCES.md">RESOURCES.md</a></dt>
           <dd>Проверенные первичные источники для текущей миссии.</dd>
           <dt><a href="NOTES.md">NOTES.md</a></dt>
@@ -66,7 +75,7 @@
           </dd>
         </dl>
 
-        <h2>Текущая тема: Free/AST</h2>
+        <h2>Опорная тема перед уроком 3: Free/AST</h2>
         <ul>
           <li>
             <a href="lessons/0004-free-ast-query-boundaries.html"
@@ -238,9 +247,8 @@
         </ol>
 
         <footer>
-          E2.7 завершено. Подтверждены typed stream, реальный SQLite full table
-          scan, fold миллиона строк и различие между retained V8 heap и RSS
-          процесса.
+          Текущая миссия: урок 3, L3.0. Builder должен остаться typed front-end
+          к существующему AST и подключать Driver только на execution boundary.
         </footer>
       </article>
     </main>
