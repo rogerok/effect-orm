@@ -1,82 +1,248 @@
 <!doctype html>
 <html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Учебное пространство effect-orm</title>
-  <link rel="stylesheet" href="assets/lesson-theme.css">
-</head>
-<body>
-<main>
-  <article>
-    <header>
-      <p class="eyebrow">effect-orm · учебное пространство</p>
-      <h1>Карта обучения</h1>
-      <p class="lede">Одна точка входа для текущей миссии, уроков, справочников, исследований и подтверждённых результатов обучения.</p>
-    </header>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Учебное пространство effect-orm</title>
+    <link rel="stylesheet" href="assets/lesson-theme.css" />
+  </head>
+  <body>
+    <main>
+      <article>
+        <header>
+          <p class="eyebrow">effect-orm · учебное пространство</p>
+          <h1>Карта обучения</h1>
+          <p class="lede">
+            Одна точка входа для текущей миссии, уроков, справочников,
+            исследований и подтверждённых результатов обучения.
+          </p>
+        </header>
 
-    <h2>Сейчас</h2>
-    <div class="panel success">
-      <p class="kicker">Текущий шаг · E2.6 DataLoader</p>
-      <p>Различить три логических результата <code>getPostsByUserId</code> и один физический SQL-батч, затем восстановить отдельный массив постов для каждого <code>userId</code>.</p>
-      <p><a href="lessons/0011-one-batch-many-post-lists.html">Урок 0011: один SQL, много ответов →</a> · <a href="references/effect-request-one-to-many.html">Короткая памятка</a></p>
-    </div>
+        <h2>Сейчас</h2>
+        <div class="panel success">
+          <p class="kicker">Завершено · E2.7 Stream</p>
+          <p>
+            Typed adapter сохранил ленивость, SQLite передал строки через
+            <code>stmt.iterate()</code>, миллионный <code>runFold</code> вернул
+            точные count/sum, а before/after snapshots подтвердили отсутствие
+            удержания всех row-объектов в V8 heap.
+          </p>
+          <p>
+            <a href="lessons/0012-stream-is-not-an-array.html"
+              >Урок 0012: Stream — не массив →</a
+            >
+            ·
+            <a href="references/streaming-full-table-scan.html">Памятка</a>
+            ·
+            <a href="records/0028-heap-retention-versus-rss.md"
+              >Итоговая запись</a
+            >
+          </p>
+        </div>
 
-    <h2>Как ориентироваться</h2>
-    <dl class="assignment-map">
-      <dt><a href="MISSION.md">MISSION.md</a></dt>
-      <dd>Зачем идёт обучение, критерии результата и граница материала.</dd>
-      <dt><a href="RESOURCES.md">RESOURCES.md</a></dt>
-      <dd>Проверенные первичные источники для текущей миссии.</dd>
-      <dt><a href="NOTES.md">NOTES.md</a></dt>
-      <dd>Маршрут следующих занятий и рабочие преподавательские заметки.</dd>
-      <dt><a href="lessons/">lessons/</a></dt>
-      <dd>Пошаговые задания и упражнения, которые можно проходить самостоятельно.</dd>
-      <dt><a href="references/">references/</a></dt>
-      <dd>Короткие опоры для сверки после первой самостоятельной попытки.</dd>
-      <dt><a href="records/index.md">records/index.md</a></dt>
-      <dd>Хронология подтверждённых результатов и связи с уроками и справочниками.</dd>
-    </dl>
+        <h2>Как ориентироваться</h2>
+        <dl class="assignment-map">
+          <dt><a href="MISSION.md">MISSION.md</a></dt>
+          <dd>Зачем идёт обучение, критерии результата и граница материала.</dd>
+          <dt><a href="RESOURCES.md">RESOURCES.md</a></dt>
+          <dd>Проверенные первичные источники для текущей миссии.</dd>
+          <dt><a href="NOTES.md">NOTES.md</a></dt>
+          <dd>
+            Маршрут следующих занятий и рабочие преподавательские заметки.
+          </dd>
+          <dt><a href="lessons/">lessons/</a></dt>
+          <dd>
+            Пошаговые задания и упражнения, которые можно проходить
+            самостоятельно.
+          </dd>
+          <dt><a href="references/">references/</a></dt>
+          <dd>
+            Короткие опоры для сверки после первой самостоятельной попытки.
+          </dd>
+          <dt><a href="records/index.md">records/index.md</a></dt>
+          <dd>
+            Хронология подтверждённых результатов и связи с уроками и
+            справочниками.
+          </dd>
+        </dl>
 
-    <h2>Текущая тема: Free/AST</h2>
-    <ul>
-      <li><a href="lessons/0004-free-ast-query-boundaries.html">Урок 0004 — четыре границы запроса</a> — базовая карта</li>
-      <li><a href="lessons/0005-rebuild-minimal-query-pipeline.html">Урок 0005 — восстановить минимальный query pipeline</a> — практика воспроизведения</li>
-      <li><a href="lessons/0007-ast-optimizer-from-frontend.html">Урок 0007 — оптимизатор AST с нуля</a> — вводный шаг</li>
-      <li><a href="lessons/0006-e2-3-optimizer-pass.html">Урок 0006 — полный маршрут E2.3</a> — основной проход</li>
-      <li><a href="lessons/0008-constant-predicate-boundary.html">Урок 0008 — константный предикат на границе WHERE</a> — граница constant folding</li>
-      <li><a href="lessons/0009-expression-tag-versus-value-type.html">Урок 0009 — вид узла и тип значения</a> — обнаруженный пробел E2.4</li>
-      <li><a href="references/expression-type-marker.html">Памятка — _tag и фантомный маркер</a></li>
-      <li><a href="lessons/0010-cached-effect-lifetime.html">Урок 0010 — время жизни Effect.cached</a> — следующий механизм E2.5</li>
-      <li><a href="references/cached-effect-lifetime.html">Памятка — создание и использование кеша</a></li>
-      <li><a href="lessons/0011-one-batch-many-post-lists.html">Урок 0011 — один SQL, много массивов постов</a> — первая граница E2.6</li>
-      <li><a href="references/effect-request-one-to-many.html">Памятка — Effect Request один-ко-многим</a></li>
-      <li><a href="references/free-ast-query-pipeline.html">Справочник — Free/AST-пайплайн запросов</a></li>
-      <li><a href="references/optimizer-pass.html">Справочник — optimizer pass для Predicate AST</a></li>
-      <li><a href="references/ast-tree-basics.html">Справочник — AST с точки зрения фронтенд-разработчика</a></li>
-      <li><a href="references/0001-predicate-optimizer-invariants.html">Справочник — инварианты оптимизатора Predicate</a></li>
-      <li><a href="records/index.md">Записи обучения — хронология E2.3</a></li>
-    </ul>
+        <h2>Текущая тема: Free/AST</h2>
+        <ul>
+          <li>
+            <a href="lessons/0004-free-ast-query-boundaries.html"
+              >Урок 0004 — четыре границы запроса</a
+            >
+            — базовая карта
+          </li>
+          <li>
+            <a href="lessons/0005-rebuild-minimal-query-pipeline.html"
+              >Урок 0005 — восстановить минимальный query pipeline</a
+            >
+            — практика воспроизведения
+          </li>
+          <li>
+            <a href="lessons/0007-ast-optimizer-from-frontend.html"
+              >Урок 0007 — оптимизатор AST с нуля</a
+            >
+            — вводный шаг
+          </li>
+          <li>
+            <a href="lessons/0006-e2-3-optimizer-pass.html"
+              >Урок 0006 — полный маршрут E2.3</a
+            >
+            — основной проход
+          </li>
+          <li>
+            <a href="lessons/0008-constant-predicate-boundary.html"
+              >Урок 0008 — константный предикат на границе WHERE</a
+            >
+            — граница constant folding
+          </li>
+          <li>
+            <a href="lessons/0009-expression-tag-versus-value-type.html"
+              >Урок 0009 — вид узла и тип значения</a
+            >
+            — обнаруженный пробел E2.4
+          </li>
+          <li>
+            <a href="references/expression-type-marker.html"
+              >Памятка — _tag и фантомный маркер</a
+            >
+          </li>
+          <li>
+            <a href="lessons/0010-cached-effect-lifetime.html"
+              >Урок 0010 — время жизни Effect.cached</a
+            >
+            — следующий механизм E2.5
+          </li>
+          <li>
+            <a href="references/cached-effect-lifetime.html"
+              >Памятка — создание и использование кеша</a
+            >
+          </li>
+          <li>
+            <a href="lessons/0011-one-batch-many-post-lists.html"
+              >Урок 0011 — один SQL, много массивов постов</a
+            >
+            — первая граница E2.6
+          </li>
+          <li>
+            <a href="references/effect-request-one-to-many.html"
+              >Памятка — Effect Request один-ко-многим</a
+            >
+          </li>
+          <li>
+            <a href="lessons/0012-stream-is-not-an-array.html"
+              >Урок 0012 — Stream не гарантирует малую память</a
+            >
+            — первая граница E2.7
+          </li>
+          <li>
+            <a href="references/streaming-full-table-scan.html"
+              >Памятка — потоковый full table scan</a
+            >
+          </li>
+          <li>
+            <a href="references/free-ast-query-pipeline.html"
+              >Справочник — Free/AST-пайплайн запросов</a
+            >
+          </li>
+          <li>
+            <a href="references/optimizer-pass.html"
+              >Справочник — optimizer pass для Predicate AST</a
+            >
+          </li>
+          <li>
+            <a href="references/ast-tree-basics.html"
+              >Справочник — AST с точки зрения фронтенд-разработчика</a
+            >
+          </li>
+          <li>
+            <a href="references/0001-predicate-optimizer-invariants.html"
+              >Справочник — инварианты оптимизатора Predicate</a
+            >
+          </li>
+          <li>
+            <a href="records/index.md">Записи обучения — хронология E2.3</a>
+          </li>
+        </ul>
 
-    <h2>Пройденная тема: Effect Pool</h2>
-    <ul>
-      <li><a href="lessons/0001-effect-pool-mental-model.html">Урок 0001 — ментальная модель Effect Pool</a></li>
-      <li><a href="lessons/0002-effect-pool-internals.html">Урок 0002 — механизм Effect Pool изнутри</a></li>
-      <li><a href="lessons/0003-node-and-effect-pools.html">Урок 0003 — пулы Node.js и Effect</a></li>
-      <li><a href="references/effect-pool.html">Справочник — Effect Pool</a></li>
-      <li><a href="research/effect-pool-concepts.md">Исследование — механика resource pool</a></li>
-    </ul>
+        <h2>Пройденная тема: Effect Pool</h2>
+        <ul>
+          <li>
+            <a href="lessons/0001-effect-pool-mental-model.html"
+              >Урок 0001 — ментальная модель Effect Pool</a
+            >
+          </li>
+          <li>
+            <a href="lessons/0002-effect-pool-internals.html"
+              >Урок 0002 — механизм Effect Pool изнутри</a
+            >
+          </li>
+          <li>
+            <a href="lessons/0003-node-and-effect-pools.html"
+              >Урок 0003 — пулы Node.js и Effect</a
+            >
+          </li>
+          <li>
+            <a href="references/effect-pool.html">Справочник — Effect Pool</a>
+          </li>
+          <li>
+            <a href="lessons/0013-effect-runtime-lifetimes.html"
+              >Урок 0013 — как живёт Effect runtime</a
+            >
+            — интерактивный симулятор Fiber, Scope, fork и Pool
+          </li>
+          <li>
+            <a href="references/fiber-scope-fork.html"
+              >Памятка — выбор между yield*, Effect.all и fork family</a
+            >
+          </li>
+          <li>
+            <a href="research/effect-pool-concepts.md"
+              >Исследование — механика resource pool</a
+            >
+          </li>
+        </ul>
 
-    <h2>Прежний маршрут для возвращения</h2>
-    <ol class="timeline">
-      <li><strong>Повторение · AST</strong><span>Пройти урок 0007 и вслух объяснить вложенность обычных JavaScript-объектов.</span></li>
-      <li><strong>E2.3 · сверка контракта</strong><span>Сопоставить явный Boolean-предикат текущего кода с исходным acceptance-примером курса.</span></li>
-      <li><strong>Чистый вертикальный срез</strong><span>С пустого файла воспроизвести минимальные 2.1–2.4 для одного SELECT.</span></li>
-      <li><strong>2.5 и повторение</strong><span>Восстановить Effect-helper, затем повторить весь минимальный путь через интервал.</span></li>
-    </ol>
+        <h2>Прежний маршрут для возвращения</h2>
+        <ol class="timeline">
+          <li>
+            <strong>Повторение · AST</strong
+            ><span
+              >Пройти урок 0007 и вслух объяснить вложенность обычных
+              JavaScript-объектов.</span
+            >
+          </li>
+          <li>
+            <strong>E2.3 · сверка контракта</strong
+            ><span
+              >Сопоставить явный Boolean-предикат текущего кода с исходным
+              acceptance-примером курса.</span
+            >
+          </li>
+          <li>
+            <strong>Чистый вертикальный срез</strong
+            ><span
+              >С пустого файла воспроизвести минимальные 2.1–2.4 для одного
+              SELECT.</span
+            >
+          </li>
+          <li>
+            <strong>2.5 и повторение</strong
+            ><span
+              >Восстановить Effect-helper, затем повторить весь минимальный путь
+              через интервал.</span
+            >
+          </li>
+        </ol>
 
-    <footer>Текущая миссия — самостоятельно выполнить E2.6. Начальная проверка: описать тип одного request и объяснить, как один плоский SQL-результат превращается в отдельный массив для каждого ожидающего entry.</footer>
-  </article>
-</main>
-</body>
+        <footer>
+          E2.7 завершено. Подтверждены typed stream, реальный SQLite full table
+          scan, fold миллиона строк и различие между retained V8 heap и RSS
+          процесса.
+        </footer>
+      </article>
+    </main>
+  </body>
 </html>

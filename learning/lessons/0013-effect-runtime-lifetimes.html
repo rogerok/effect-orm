@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Урок 0013 — как живёт Effect-программа</title>
+    <link rel="stylesheet" href="../assets/lesson-theme.css" />
+    <script defer src="../assets/effect-runtime-lab.js"></script>
+  </head>
+  <body>
+    <main>
+      <article>
+        <header>
+          <p class="eyebrow">Effect runtime · интерактивная карта · 12 минут</p>
+          <h1>Кто работает.<br />Кто ждёт.<br />Кто закрывает.</h1>
+          <p class="lede">
+            Разобраться в конкурентности через три независимых вопроса: какая
+            fiber исполняется, какой Scope владеет временем жизни и кто держит
+            ограниченный ресурс пула.
+          </p>
+          <p class="meta">
+            <a href="../index.html">Карта обучения</a> ·
+            <a href="../references/fiber-scope-fork.html">Памятка выбора API</a>
+            · <a href="../references/effect-pool.html">Справочник Pool</a>
+          </p>
+        </header>
+
+        <section id="map">
+          <h2>Не одна магия, а четыре механизма</h2>
+          <dl class="assignment-map">
+            <dt><code>Effect&lt;A, E, R&gt;</code></dt>
+            <dd>
+              Описание вычисления. Пока runtime его не запустил, работа не
+              происходит.
+            </dd>
+            <dt><code>Fiber&lt;A, E&gt;</code></dt>
+            <dd>
+              Одно живое исполнение Effect: running, suspended или завершённое с
+              <code>Exit</code>.
+            </dd>
+            <dt><code>Scope</code></dt>
+            <dd>
+              Граница времени жизни. Хранит finalizers и запускает cleanup при
+              закрытии.
+            </dd>
+            <dt><code>Pool</code></dt>
+            <dd>
+              Владелец ограниченного набора ресурсов.
+              <code>Pool.get</code> выдаёт lease до закрытия checkout Scope.
+            </dd>
+          </dl>
+          <div class="panel insight">
+            <p>
+              <strong
+                >Fiber отвечает «кто сейчас исполняет?»; Scope — «до какого
+                события это обязано жить?»; Pool — «кому сейчас разрешено
+                пользоваться дефицитным ресурсом?».</strong
+              >
+              Если смешать эти вопросы, <code>fork</code> начинает казаться
+              случайной магией.
+            </p>
+          </div>
+        </section>
+
+        <section id="runtime">
+          <h2>Как программа оживает</h2>
+          <ol class="timeline">
+            <li>
+              <strong>Описание</strong
+              ><span
+                >Комбинаторы строят Effect. Ничего ещё не исполняется.</span
+              >
+            </li>
+            <li>
+              <strong>Запуск</strong
+              ><span
+                ><code>runPromise</code> создаёт root fiber и передаёт её
+                scheduler.</span
+              >
+            </li>
+            <li>
+              <strong>Исполнение</strong
+              ><span
+                >Fiber выполняет операции до результата или точки
+                suspension.</span
+              >
+            </li>
+            <li>
+              <strong>Завершение</strong
+              ><span
+                >Получается Exit; children прерываются, Scope закрываются,
+                finalizers исполняются.</span
+              >
+            </li>
+          </ol>
+          <p>
+            <strong>Scheduler</strong> — диспетчер: он даёт fiber возможность
+            продолжить выполнение. Fiber — не OS thread. Ты можешь иметь тысячи
+            ожидающих fibers на одном JavaScript thread, потому что ожидающая
+            fiber не крутит цикл и не удерживает стек вызовов как синхронная
+            блокировка.
+          </p>
+        </section>
+
+        <section id="sleep">
+          <h2>Зачем нужен этот <code>sleep</code></h2>
+          <div class="panel warning">
+            <p>
+              <strong
+                ><code>Effect.sleep</code> не «тормозит программу».</strong
+              >
+              Он приостанавливает текущую fiber на scheduler duration, не
+              блокируя JavaScript thread. Остальные runnable fibers продолжают
+              работать.
+            </p>
+          </div>
+          <p>
+            В учебных примерах <code>sleep</code> делает невидимое ожидание
+            видимым. В реальном backend на том же месте обычно находится:
+          </p>
+          <ul>
+            <li>ожидание HTTP response или PostgreSQL socket;</li>
+            <li>ожидание очереди либо semaphore permit;</li>
+            <li>retry/backoff, timeout либо периодический heartbeat.</li>
+          </ul>
+          <p>
+            Убирать <code>sleep</code> из production-кода нужно, если он
+            маскирует race condition или «даёт другой задаче время». Но для
+            настоящей задержки, backoff и тестовой модели latency это нормальная
+            операция. В тестах <code>TestClock.adjust</code> продвигает
+            виртуальное время без реального ожидания.
+          </p>
+          <pre><code>// F0 паркуется; JavaScript thread свободен
+const rows = yield* databaseCall
+
+// Нужна независимая работа — только тогда появляется новая fiber
+const child = yield* databaseCall.pipe(Effect.forkChild)</code></pre>
+        </section>
+
+        <section id="simulator">
+          <h2>Прокрути пять жизненных циклов</h2>
+          <p>
+            Иди кнопкой «Шаг». На каждом состоянии одновременно сверяй три
+            колонки: <strong>Fiber tree</strong>,
+            <strong>Scope lifetime</strong> и <strong>Pool</strong>.
+            Автопрокрутка полезна только после ручного прохода.
+          </p>
+          <effect-runtime-lab></effect-runtime-lab>
+          <div class="panel success">
+            <p>
+              <strong>Ключ к Pool-сценарию:</strong> закрытие checkout Scope
+              возвращает Driver в пул; закрытие pool Scope физически освобождает
+              Driver. Это два разных finalizer и два разных события.
+            </p>
+          </div>
+        </section>
+
+        <section id="choice">
+          <h2>Когда вообще дёргать fork</h2>
+          <p>
+            По умолчанию — <strong>не дёргать</strong>. Сначала выбери
+            высокоуровневый комбинатор, который выражает требуемый результат.
+            Ручной fork нужен, когда тебе действительно нужен
+            <code>Fiber</code>-handle или особая граница времени жизни.
+          </p>
+          <dl class="assignment-map">
+            <dt>Обычная зависимость</dt>
+            <dd>
+              <code>yield* effect</code>. Текущая fiber ждёт значение и
+              продолжает с ним.
+            </dd>
+            <dt>Много результатов</dt>
+            <dd>
+              <code>Effect.all(effects, { concurrency: N })</code>. Runtime
+              создаёт и собирает конкурентную работу.
+            </dd>
+            <dt>Нужен handle</dt>
+            <dd>
+              <code>forkChild</code>, затем <code>Fiber.join</code>,
+              <code>Fiber.await</code> или <code>Fiber.interrupt</code>.
+            </dd>
+            <dt>Жизнь равна Scope</dt>
+            <dd>
+              <code>forkScoped</code> для текущего Scope;
+              <code>forkIn</code> для явно выбранного Scope.
+            </dd>
+            <dt>Пережить родителя</dt>
+            <dd>
+              <code>forkDetach</code> — редкое исключение с явным
+              shutdown-контрактом. Иначе получишь утечку или потерянную ошибку.
+            </dd>
+          </dl>
+          <p>
+            В установленном <code>effect@4.0.0-rc.108</code> общего
+            <code>Effect.fork</code> нет. Старые материалы с таким именем не
+            копируй механически: здесь явный безопасный вариант называется
+            <code>forkChild</code>.
+          </p>
+          <fork-choice-lab></fork-choice-lab>
+        </section>
+
+        <section id="control">
+          <h2>Как управлять полученной Fiber</h2>
+          <div class="type-line">
+            <b><code>Fiber.join</code></b
+            ><span
+              >Дождаться и встроить её успех/ошибку в текущий workflow.</span
+            >
+          </div>
+          <div class="type-line">
+            <b><code>Fiber.await</code></b
+            ><span
+              >Получить полный <code>Exit</code> как значение и самостоятельно
+              разобрать success/failure/interruption.</span
+            >
+          </div>
+          <div class="type-line">
+            <b><code>Fiber.interrupt</code></b
+            ><span
+              >Попросить остановиться и дождаться завершения
+              interruption/finalizers.</span
+            >
+          </div>
+          <div class="type-line">
+            <b>забыть handle</b
+            ><span
+              >Допустимо лишь когда lifetime уже надёжно принадлежит parent или
+              Scope и результат сознательно не нужен.</span
+            >
+          </div>
+          <p>
+            <code>join</code> не запускает Effect второй раз. Он наблюдает уже
+            запущенную fiber. Если дочерняя fiber завершилась раньше,
+            <code>join</code> сразу получает сохранённый Exit.
+          </p>
+        </section>
+
+        <section id="failure">
+          <h2>Модель прерывания без мистики</h2>
+          <pre><code>parent завершился / Scope закрылся / Fiber.interrupt
+                    │
+                    ▼
+          child получает interrupt
+                    │
+                    ▼
+       обычное продолжение прекращается
+                    │
+                    ▼
+      finalizers освобождают ресурсы
+                    │
+                    ▼
+          Exit содержит interruption</code></pre>
+          <p>
+            Interruption кооперативное: Effect runtime обрабатывает его на
+            безопасной точке. Долгий синхронный JavaScript, блокирующий event
+            loop, нельзя остановить посередине инструкции. Поэтому CPU-тяжёлый
+            цикл не становится безопасно конкурентным только из-за обёртки в
+            fiber.
+          </p>
+        </section>
+
+        <section id="exercise">
+          <h2>Один реальный разбор проекта</h2>
+          <p>
+            Открой
+            <a href="../../src/drivers/pglite-pool.test.ts"
+              ><code>src/drivers/pglite-pool.test.ts</code></a
+            >
+            и для строк с двумя <code>Effect.scoped</code> подпиши на бумаге:
+          </p>
+          <ol>
+            <li>какой Scope владеет самим pool;</li>
+            <li>какой Scope владеет первой выдачей <code>Pool.get</code>;</li>
+            <li>какое событие возвращает PGlite в pool;</li>
+            <li>какое событие окончательно закрывает PGlite.</li>
+          </ol>
+          <p>
+            Правильная проверка: второй checkout получает тот же живой экземпляр
+            после закрытия первого checkout Scope, а физический release
+            происходит только при закрытии внешнего pool Scope.
+          </p>
+        </section>
+
+        <section id="source">
+          <h2>Первоисточники</h2>
+          <p>
+            Основной источник — JSDoc и сигнатуры установленной версии:
+            <a href="https://unpkg.com/effect@4.0.0-rc.108/src/Effect.ts"
+              ><code>Effect.ts</code></a
+            >, разделы <code>sleep</code>, <code>scoped</code>,
+            <code>forkChild</code>, <code>forkIn</code>,
+            <code>forkScoped</code>, <code>forkDetach</code>; затем
+            <a href="https://unpkg.com/effect@4.0.0-rc.108/src/Fiber.ts"
+              ><code>Fiber.ts</code></a
+            >,
+            <a href="https://unpkg.com/effect@4.0.0-rc.108/src/Scope.ts"
+              ><code>Scope.ts</code></a
+            >
+            и
+            <a href="https://unpkg.com/effect@4.0.0-rc.108/src/Pool.ts"
+              ><code>Pool.ts</code></a
+            >.
+          </p>
+        </section>
+
+        <footer>
+          Этот урок — тематический мост к безопасной конкурентности ORM: fibers
+          исполняют запросы, checkout Scope возвращает соединение, pool Scope
+          освобождает физические ресурсы. Если любой шаг симулятора непонятен,
+          задай агенту вопрос с названием сценария и номером t-шага.
+        </footer>
+      </article>
+    </main>
+  </body>
+</html>

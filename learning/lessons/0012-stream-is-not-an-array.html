@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Урок 0012 — Stream не гарантирует малую память</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+  <script defer src="../assets/interactive-components.js"></script>
+</head>
+<body>
+<main><article>
+  <header>
+    <p class="eyebrow">E2.7 · первая граница · 7 минут</p>
+    <h1>Stream — не массив.<br>Но этого недостаточно.</h1>
+    <p class="lede">Перед реализацией full table scan научись находить место, где миллион строк может незаметно оказаться в памяти целиком.</p>
+    <p class="meta"><a href="../index.html">Карта обучения</a> · <a href="../references/streaming-full-table-scan.html">Памятка</a> · <a href="../../src/drivers/driver.ts">Контракт Driver</a></p>
+  </header>
+
+  <section id="target">
+    <h2>Наблюдаемый результат E2.7</h2>
+    <p>Упражнение требует выполнить full table scan миллиона строк через типизированный query API, сложить числовое поле с помощью <code>Stream.runFold</code> и измерить память.</p>
+    <div class="panel insight">
+      <p><strong>В текущем проекте нижний слой уже существует.</strong> <a href="../../src/drivers/driver.ts"><code>DriverImpl.executeStream</code></a> объявлен; SQLite использует ленивый <code>stmt.iterate()</code>, PGlite — порционный <code>FETCH</code>. Не переписывай эти части вслепую. Незакрытая граница — типизированный адаптер от <code>Select&lt;R&gt;</code> к <code>Stream&lt;R, DriverError, Driver&gt;</code> и проверка памяти.</p>
+    </div>
+    <p>Фраза «через builder API» в упражнении относится к уже имеющемуся типизированному API <code>selectAll(table)</code>. Fluent builder появляется только в уроке 3 и в этом репозитории пока отсутствует.</p>
+  </section>
+
+  <section id="diagnostic">
+    <h2>Сначала прогноз</h2>
+    <p>Представь неверную реализацию драйвера:</p>
+    <pre><code>executeStream(sql, params) =
+  Stream.fromIterableEffect(
+    executeRaw(sql, params).pipe(
+      Effect.map(result =&gt; result.rows)
+    )
+  )</code></pre>
+    <p>Снаружи тип — настоящий <code>Stream&lt;Row, DriverError&gt;</code>. Что произойдёт до выдачи первой строки?</p>
+    <learning-check>
+      <section class="lab-shell" aria-label="Проверка границы массива и потока">
+        <div class="quiz-options">
+          <button type="button" data-answer="correct" data-feedback="Да. executeRaw сначала завершает запрос и создаёт result.rows целиком; Stream лишь читает уже созданный массив.">Все строки уже собраны внутри массива</button>
+          <button type="button" data-answer="wrong" data-feedback="Нет. Сам тип Stream не меняет способ получения result.rows внутри executeRaw.">Строки будут загружаться только по запросу</button>
+          <button type="button" data-answer="wrong" data-feedback="Нет. fold здесь ещё не начался; массив создаёт producer до первого элемента потока.">Память будет расти лишь из-за fold</button>
+        </div>
+        <p class="quiz-feedback" aria-live="polite">Сначала объясни прогноз вслух, затем выбери ответ.</p>
+      </section>
+    </learning-check>
+  </section>
+
+  <section id="model">
+    <h2>Три границы ограниченной памяти</h2>
+    <ol class="timeline">
+      <li><strong>Producer</strong><span>Драйвер получает строки постепенно: iterator или cursor/FETCH, а не <code>all()</code>.</span></li>
+      <li><strong>Adapter</strong><span>Типизированный helper компилирует <code>Select&lt;R&gt;</code> и делегирует <code>executeStream</code>, не вызывая <code>executeRaw</code>.</span></li>
+      <li><strong>Consumer</strong><span><code>runFold</code> хранит только аккумулятор, например <code>{ count, sum }</code>.</span></li>
+      <li><strong>Scope</strong><span>Iterator, cursor и транзакция освобождаются при успехе, ошибке и прерывании.</span></li>
+    </ol>
+    <p>Память ограничена только когда <strong>все</strong> границы сохраняют постепенность. Один скрытый <code>rows: Row[]</code>, <code>runCollect</code> или аккумулятор с массивом снова удержит весь результат.</p>
+  </section>
+
+  <section id="types">
+    <h2>Тип будущего адаптера</h2>
+    <p>Не пиши тело до проверки контракта. Заполни смысл трёх параметров:</p>
+    <pre><code>streamFromSelect(
+  statement: Select&lt;R&gt;,
+  chunkSize?: number,
+): Stream.Stream&lt;R, DriverError, Driver&gt;</code></pre>
+    <dl class="assignment-map">
+      <dt><code>R</code></dt>
+      <dd>Одна декодированная строка результата, а не массив строк.</dd>
+      <dt><code>DriverError</code></dt>
+      <dd>Ошибка компиляции/исполнения остаётся в типизированном error channel.</dd>
+      <dt><code>Driver</code></dt>
+      <dd>Зависимость нужна во время потребления потока: тогда выбираются dialect и реализация <code>executeStream</code>.</dd>
+    </dl>
+    <p>По исходнику установленного Effect, <code>Stream.unwrap</code> превращает <code>Effect&lt;Stream&lt;A, ...&gt;, ...&gt;</code> в один поток. Это подходящий строительный блок, когда сначала нужно получить сервис <code>Driver</code>, а затем вернуть созданный им stream. Это подсказка, не готовая реализация.</p>
+  </section>
+
+  <section id="fold">
+    <h2>Потребитель обязан забывать строки</h2>
+    <pre><code>initial state: { count: 0, sum: 0 }
+next(state, row): {
+  count: state.count + 1,
+  sum: state.sum + row.amount
+}</code></pre>
+    <p>В установленной версии <code>Stream.runFold</code> проходит по текущему chunk и заменяет аккумулятор для каждого элемента. Если аккумулятор состоит из двух чисел, его размер не зависит от количества строк. Если добавить <code>rows: [...state.rows, row]</code>, full scan снова станет материализацией результата.</p>
+  </section>
+
+  <section id="memory">
+    <h2>Что доказывает замер памяти</h2>
+    <p>Два heap snapshot нужны по условию, но их разница показывает главным образом <strong>удержанную память после прохода</strong>. Она может пропустить кратковременный пик. Node предупреждает, что создание snapshot останавливает main thread и само может удвоить heap.</p>
+    <div class="panel warning">
+      <p><strong>Поэтому проверка состоит из двух наблюдений.</strong> Сохрани snapshots для выполнения задания, а во время scan отдельно наблюдай peak <code>heapUsed</code> или process RSS. Сравни потоковый fold с намеренно материализующим <code>runCollect</code> в отдельных процессах; иначе второй прогон наследует прогретый heap первого.</p>
+    </div>
+    <p>Корректность памяти не заменяет корректность данных: fold должен вернуть точные <code>count</code> и <code>sum</code>, вычисляемые заранее из способа генерации миллиона строк.</p>
+  </section>
+
+  <section id="next">
+    <h2>Первое пользовательское действие</h2>
+    <p>Ответь агенту без кода:</p>
+    <pre><code>Почему Stream.fromIterableEffect(executeRaw(...).map(r =&gt; r.rows))
+не решает E2.7, хотя наружный тип уже Stream?
+
+Назови отдельно:
+1. что к этому моменту уже находится в памяти;
+2. кто должен получать следующую порцию;
+3. что имеет право удерживать runFold.</code></pre>
+    <p>По ответу выберем следующий шаг: если граница producer ясна — ты спроектируешь сигнатуру и ленивое тело <code>streamFromSelect</code>; если нет — разберём один pull по временной шкале.</p>
+  </section>
+
+  <h2>Первоисточники</h2>
+  <ul>
+    <li><a href="https://unpkg.com/effect@4.0.0-rc.108/src/Stream.ts">Effect 4.0.0-rc.108 <code>Stream.ts</code></a>: точные сигнатуры <code>fromIterableEffect</code>, <code>unwrap</code>, <code>paginate</code> и <code>runFold</code>.</li>
+    <li><a href="https://nodejs.org/api/process.html#processmemoryusage"><code>process.memoryUsage()</code></a>: различие <code>heapUsed</code>, <code>external</code> и <code>rss</code>.</li>
+    <li><a href="https://nodejs.org/en/learn/diagnostics/memory/using-heap-snapshot">Node.js: Using Heap Snapshot</a>: стоимость snapshot и метод сравнения.</li>
+  </ul>
+
+  <footer>Урок вводит одну границу E2.7: тип Stream сам по себе не доказывает потоковое получение данных. Задавай агенту вопросы по любому непонятному месту; backend-код, тест и memory experiment остаются твоей работой.</footer>
+</article></main>
+</body>
+</html>

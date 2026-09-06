@@ -4,7 +4,7 @@
 
 ## Как связаны материалы
 
-- [MISSION.md](../MISSION.md) задаёт текущую цель E2.6: DataLoader для связи один-ко-многим.
+- [MISSION.md](../MISSION.md) задаёт текущую цель E2.7: потоковый full table scan с ограниченной памятью.
 - [Уроки](../lessons/) дают задания в порядке, удобном для прохождения.
 - [Справочники](../references/) открываются после самостоятельной попытки.
 - Этот каталог фиксирует только подтверждённые результаты и связывает их с соответствующими уроками.
@@ -50,8 +50,19 @@
 ### E2.6: Request batching
 
 22. [0022 — миссия перешла к E2.6 DataLoader](0022-mission-shift-e2-6-dataloader.md): следующая цель — один SQL-батч и отдельный массив постов для каждого `userId`; понимание механизма пока не подтверждено.
+23. [0023 — one-to-many batch раздаёт отдельные массивы](0023-one-to-many-batch-distribution.md): реализация создаёт и дополняет группы, возвращает `[]` для отсутствующей группы и прошла сквозную проверку одного SQL на три request.
 
 Связанный материал: [урок 0011 — один SQL, много массивов постов](../lessons/0011-one-batch-many-post-lists.html) и [памятка Effect Request один-ко-многим](../references/effect-request-one-to-many.html).
+
+### E2.7: потоковый full table scan
+
+24. [0024 — миссия перешла к E2.7 Stream](0024-mission-shift-e2-7-streaming.md): следующая цель — typed stream, fold миллиона строк и корректная проверка памяти; понимание механизма пока не подтверждено.
+25. [0025 — typed stream сохраняет ленивость](0025-typed-stream-preserves-laziness.md): Driver извлекается при terminal operation, raw stream адаптируется к `R`, а fake Driver подтверждает один вызов и постоянный fold-аккумулятор.
+26. [0026 — SQLite stream работает сквозным проходом](0026-sqlite-stream-fold-end-to-end.md): реальный `stmt.iterate()` передал три строки в `runFold`, который вернул точные count и sum.
+27. [0027 — миллион строк свёрнут через Stream](0027-million-row-stream-fold.md): standalone SQLite scan вернул точные count и sum без массива результатов.
+28. [0028 — V8 heap отделён от RSS](0028-heap-retention-versus-rss.md): forced GC проверяет удержание JS-объектов, а RSS включает native allocations и не доказывает утечку Stream.
+
+Связанный материал: [урок 0012 — Stream не гарантирует малую память](../lessons/0012-stream-is-not-an-array.html) и [памятка по потоковому full table scan](../references/streaming-full-table-scan.html).
 
 ## Опорные справочники
 
@@ -61,3 +72,4 @@
 - [Free/AST-пайплайн запросов](../references/free-ast-query-pipeline.html) — записи 0001–0004.
 - [Время жизни Effect.cached](../references/cached-effect-lifetime.html) — опора к уроку 0010.
 - [Effect Request один-ко-многим](../references/effect-request-one-to-many.html) — контракт request, группировка строк и completion каждого entry для E2.6.
+- [Потоковый full table scan](../references/streaming-full-table-scan.html) — producer, typed adapter, fold и границы memory measurement для E2.7.

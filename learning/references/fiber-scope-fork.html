@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fiber, Scope и fork — краткая памятка</title>
+    <link rel="stylesheet" href="../assets/lesson-theme.css" />
+  </head>
+  <body>
+    <main>
+      <article>
+        <header>
+          <p class="eyebrow">Справочник · Effect 4.0.0-rc.108</p>
+          <h1>Fiber × Scope:<br />одна страница</h1>
+          <p class="lede">
+            Сначала определи владельца и обязательный результат; затем выбирай
+            конкурентный API.
+          </p>
+          <p class="meta">
+            <a href="../lessons/0013-effect-runtime-lifetimes.html"
+              >← Интерактивный урок</a
+            >
+            · <a href="effect-pool.html">Pool</a>
+          </p>
+        </header>
+
+        <h2>Четыре роли</h2>
+        <dl class="assignment-map">
+          <dt>Effect</dt>
+          <dd>Описание вычисления; само себя не запускает.</dd>
+          <dt>Fiber</dt>
+          <dd>Живое исполнение Effect; единица конкурентности.</dd>
+          <dt>Scheduler</dt>
+          <dd>
+            Возобновляет runnable fibers; suspended fibers CPU не получают.
+          </dd>
+          <dt>Scope</dt>
+          <dd>
+            Граница lifetime; при закрытии запускает зарегистрированные
+            finalizers.
+          </dd>
+        </dl>
+
+        <h2>Алгоритм выбора</h2>
+        <ol>
+          <li>
+            <strong>Результат B зависит от A?</strong> Используй обычный
+            <code>yield* A</code>.
+          </li>
+          <li>
+            <strong>Нужны результаты всех независимых работ?</strong> Используй
+            <code>Effect.all</code> с ограничением <code>concurrency</code>.
+          </li>
+          <li>
+            <strong>Нужен handle для join/await/interrupt?</strong> Используй
+            <code>forkChild</code>.
+          </li>
+          <li>
+            <strong
+              >Работа должна принадлежать текущему resource lifetime?</strong
+            >
+            Используй <code>forkScoped</code>.
+          </li>
+          <li>
+            <strong>Есть конкретный внешний Scope-владелец?</strong> Используй
+            <code>forkIn</code>.
+          </li>
+          <li>
+            <strong>Работа обязана пережить родителя?</strong> Только тогда
+            рассматривай <code>forkDetach</code> и явно проектируй
+            shutdown/error reporting.
+          </li>
+        </ol>
+
+        <h2>Матрица fork</h2>
+        <div class="type-line">
+          <b><code>forkChild</code></b
+          ><span
+            >Owner: parent fiber. Parent завершился → child interrupted.
+            Возвращает Fiber handle.</span
+          >
+        </div>
+        <div class="type-line">
+          <b><code>forkScoped</code></b
+          ><span
+            >Owner: текущий Scope. Scope закрылся → fiber interrupted.</span
+          >
+        </div>
+        <div class="type-line">
+          <b><code>forkIn</code></b
+          ><span
+            >Owner: переданный Scope. Удобен, когда scope выбирается явно.</span
+          >
+        </div>
+        <div class="type-line">
+          <b><code>forkDetach</code></b
+          ><span
+            >Owner: global Scope. Переживает parent; повышенный риск утечки и
+            потерянной ошибки.</span
+          >
+        </div>
+        <div class="panel warning">
+          <strong>В этой версии общего <code>Effect.fork</code> нет.</strong>
+          Старые примеры сверяй с установленными сигнатурами; стандартный
+          structured вариант здесь — <code>forkChild</code>.
+        </div>
+
+        <h2>Управление Fiber</h2>
+        <div class="type-line">
+          <b><code>join</code></b
+          ><span
+            >Дождаться и распространить success/failure/interruption в текущую
+            fiber.</span
+          >
+        </div>
+        <div class="type-line">
+          <b><code>await</code></b
+          ><span
+            >Дождаться полного Exit как значения; разобрать результат
+            самостоятельно.</span
+          >
+        </div>
+        <div class="type-line">
+          <b><code>interrupt</code></b
+          ><span>Послать interruption и дождаться завершения cleanup.</span>
+        </div>
+
+        <h2><code>sleep</code></h2>
+        <p>
+          <code>Effect.sleep(duration)</code> приостанавливает
+          <strong>текущую fiber</strong>, не блокируя JavaScript thread. Он
+          полезен для настоящих задержек, retry/backoff, heartbeat и
+          детерминированного моделирования latency. Он вреден как попытка
+          «подождать, пока race condition сам разрешится».
+        </p>
+
+        <h2>Pool: две границы</h2>
+        <dl class="assignment-map">
+          <dt>Pool Scope</dt>
+          <dd>
+            Жизнь всего пула; closing физически releases созданные ресурсы.
+          </dd>
+          <dt>Checkout Scope</dt>
+          <dd>Жизнь одной выдачи; closing возвращает ресурс в pool.</dd>
+          <dt>Все permits заняты</dt>
+          <dd>
+            <code>Pool.get</code> приостанавливает вызывающую fiber до
+            освобождения permit.
+          </dd>
+        </dl>
+
+        <h2>Три вопроса при чтении кода</h2>
+        <ol>
+          <li>
+            Какая fiber сейчас running, а какая suspended — и на каком событии?
+          </li>
+          <li>Кто owner каждой дочерней fiber и какой момент прерывает её?</li>
+          <li>
+            В каком Scope зарегистрирован finalizer ресурса и что именно он
+            делает: return или release?
+          </li>
+        </ol>
+
+        <h2>Источники</h2>
+        <ol>
+          <li>
+            <a href="https://unpkg.com/effect@4.0.0-rc.108/src/Effect.ts"
+              >Effect.ts: sleep, scoped и fork family</a
+            >.
+          </li>
+          <li>
+            <a href="https://unpkg.com/effect@4.0.0-rc.108/src/Fiber.ts"
+              >Fiber.ts: join, await, interrupt</a
+            >.
+          </li>
+          <li>
+            <a href="https://unpkg.com/effect@4.0.0-rc.108/src/Scope.ts"
+              >Scope.ts: lifetime и finalizers</a
+            >.
+          </li>
+          <li>
+            <a href="https://unpkg.com/effect@4.0.0-rc.108/src/Pool.ts"
+              >Pool.ts: lifetime, get, permits и return</a
+            >.
+          </li>
+        </ol>
+
+        <footer>
+          Памятка привязана к effect@4.0.0-rc.108. После обновления пакета
+          сначала проверь экспортируемые имена и JSDoc установленной версии.
+        </footer>
+      </article>
+    </main>
+  </body>
+</html>

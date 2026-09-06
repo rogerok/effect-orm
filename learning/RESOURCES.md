@@ -3,9 +3,9 @@
 ## Knowledge
 
 - Course: `~/Documents/bat-school/orm/BatSchool · Своя ORM на TypeScript + Effect.ts.html`
-  Основной материал курса. Для текущей миссии использовать раздел 2.9 и упражнение E2.6; разделы 2.1–2.6 остаются опорой для IR, `isIn`, typed `select` и `run`.
-- [Current IR](../src/compiler/ir.ts), [constructors](../src/compiler/ir-constructors.ts), [compiler](../src/compiler/compiler.ts) и [run helper](../src/compiler/run.ts)
-  Текущее состояние практической реализации. Использовать для чтения кода и проверки объяснений, но не как текст для копирования в упражнениях на воспроизведение.
+  Основной материал курса. Для текущей миссии использовать раздел 2.8 и упражнение E2.7; разделы 2.6–2.7 остаются опорой для typed `Select<R>`, `selectAll` и компиляции.
+- [Current typed query API](../src/query/typed-ast.ts), [statements](../src/query/statements.ts), [typed run](../src/query/typed-run.ts) и [Driver](../src/drivers/driver.ts)
+  Текущее состояние практической реализации. `executeStream` уже входит в Driver; задача E2.7 начинается с проверки producer-реализаций и проектирования typed adapter, а не с повторного копирования курса.
 - [TypeScript Handbook: Discriminated unions](https://www.typescriptlang.org/docs/handbook/2/narrowing.html#discriminated-unions)
   Официальная модель размеченных объединений и исчерпывающего разбора вариантов. Использовать для устройства AST и проверки добавления нового `_tag`.
 - [TypeScript Handbook: Generics](https://www.typescriptlang.org/docs/handbook/2/generics.html#hello-world-of-generics)
@@ -38,6 +38,16 @@
   Публичный контракт батч-резолвера. `make` получает непустой набор entry; успешное завершение резолвера с незавершённым entry считается дефектом.
 - [Effect 4.0.0-rc.108: реализация request batching](https://unpkg.com/effect@4.0.0-rc.108/src/internal/request.ts)
   Источник точной механики установленной RC: entry группируются по экземпляру resolver и batch key, запуск откладывается на `resolver.delay`, а `RequestResolver.make` использует `Effect.yieldNow`. Здесь нет автоматической дедупликации или кеша одинаковых request-значений.
+- [Effect 4.0.0-rc.108: жизненный цикл в `Effect.ts`](https://unpkg.com/effect@4.0.0-rc.108/src/Effect.ts) и [управление `Fiber`](https://unpkg.com/effect@4.0.0-rc.108/src/Fiber.ts)
+  Первичные источники для `forkChild`, `forkScoped`, `forkIn`, `forkDetach`, `scoped` и `Fiber.join`. Читать соответствующие JSDoc и сигнатуры установленной версии: связь с родителем и связь с ресурсным Scope — разные границы времени жизни.
+- [Effect 4.0.0-rc.108: `Stream`](https://unpkg.com/effect@4.0.0-rc.108/src/Stream.ts)
+  Первичный источник для E2.7: точные сигнатуры и реализация `fromIterableEffect`, `unwrap`, `paginate` и `runFold` в установленной версии.
+- [Node.js: `process.memoryUsage()`](https://nodejs.org/api/process.html#processmemoryusage)
+  Определения `heapUsed`, `external` и `rss`. Использовать для интерпретации memory experiment, особенно с native SQLite.
+- [Node.js: Using Heap Snapshot](https://nodejs.org/en/learn/diagnostics/memory/using-heap-snapshot)
+  Официальные ограничения heap snapshot: остановка main thread, дополнительная память и сравнение удержанных объектов. Snapshot до/после не заменяет наблюдение peak memory.
+- [SQLite: Recursive Common Table Expressions](https://www.sqlite.org/lang_with.html#recursive_common_table_expressions)
+  Первичный источник для DB-side generation в E2.7. Официальный пример создаёт числа 1–1 000 000; `UNION ALL` позволяет SQLite выдавать и отбрасывать строки без накопления полного временного набора.
 
 ## Wisdom (Communities)
 

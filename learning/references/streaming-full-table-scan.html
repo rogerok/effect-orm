@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Памятка — потоковый full table scan</title>
+  <link rel="stylesheet" href="../assets/lesson-theme.css">
+</head>
+<body>
+<main><article>
+  <header>
+    <p class="eyebrow">E2.7 · справочник</p>
+    <h1>Потоковый full table scan</h1>
+    <p class="lede">Короткая карта типов, ответственности и проверок. Открывай после первой самостоятельной попытки.</p>
+    <p class="meta"><a href="../lessons/0012-stream-is-not-an-array.html">Урок 0012</a> · <a href="../index.html">Карта обучения</a></p>
+  </header>
+
+  <h2>Цепочка данных</h2>
+  <pre><code>Select&lt;R&gt;
+  → compile(statement, driver.dialect)
+  → driver.executeStream(sql, params, chunkSize)
+  → Stream&lt;R, DriverError, Driver&gt;
+  → runFold({ count, sum }, reducer)
+  → Effect&lt;{ count, sum }, DriverError, Driver&gt;</code></pre>
+
+  <h2>Инвариант памяти</h2>
+  <p>Живой объём данных должен зависеть от размера текущего chunk и аккумулятора, а не от общего числа строк:</p>
+  <pre><code>live rows ≈ current chunk + driver buffers
+accumulator size = constant
+
+не должно быть:
+executeRaw(...).rows
+Stream.runCollect
+accumulator.rows.push(row)</code></pre>
+
+  <h2>Роли API</h2>
+  <dl class="assignment-map">
+    <dt><code>Stream.unwrap</code></dt>
+    <dd>Получить зависимость или выполнить подготовительный Effect, который создаёт внутренний Stream.</dd>
+    <dt><code>fromIterableEffect</code></dt>
+    <dd>Преобразовать effectful Iterable в Stream. Экономия памяти зависит от самого Iterable: ленивый iterator подходит, заранее созданный массив — нет.</dd>
+    <dt><code>Stream.paginate</code></dt>
+    <dd>По запросу consumer выполнить следующий шаг и вернуть <code>[rows, nextState]</code>; <code>Option.none()</code> завершает поток.</dd>
+    <dt><code>Stream.runFold</code></dt>
+    <dd>Свести элементы в один аккумулятор. Ограниченная память сохраняется только при аккумуляторе фиксированного размера.</dd>
+  </dl>
+
+  <h2>Границы проекта</h2>
+  <ul>
+    <li>Публичный typed helper принимает только <code>Select&lt;R&gt;</code>; <code>UPDATE</code> и <code>DELETE</code> не являются full table scan.</li>
+    <li>SQLite producer должен опираться на <code>stmt.iterate()</code>, не на <code>stmt.all()</code>.</li>
+    <li>PGlite producer должен извлекать порции cursor/FETCH и закрывать cursor/transaction при любом завершении.</li>
+    <li>Текущий <code>libsql</code> driver содержит пустую заглушку <code>executeStream</code>; упражнение курса описывает SQLite и PGlite, поэтому эту отдельную интеграцию не считать доказанной.</li>
+  </ul>
+
+  <h2>Acceptance matrix</h2>
+  <table>
+    <thead><tr><th>Свойство</th><th>Наблюдение</th></tr></thead>
+    <tbody>
+      <tr><td>Тип строки</td><td>Элемент потока выводится как <code>R</code> из <code>Select&lt;R&gt;</code>.</td></tr>
+      <tr><td>Корректность</td><td><code>count</code> равен числу вставленных строк; <code>sum</code> равна заранее вычисленной сумме.</td></tr>
+      <tr><td>Ленивость</td><td>До запуска terminal operation запрос и получение строк не выполняются.</td></tr>
+      <tr><td>Память</td><td>Peak не растёт пропорционально миллиону row-объектов; <code>runCollect</code> служит контрпримером.</td></tr>
+      <tr><td>Очистка</td><td>Producer освобождает cursor/transaction при success, failure и interruption.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Память Node.js</h2>
+  <ul>
+    <li><code>heapUsed</code> — занятая память V8 heap.</li>
+    <li><code>external</code> — память C++-объектов, связанных с JavaScript; важна для native SQLite.</li>
+    <li><code>rss</code> — резидентная память всего процесса, включая JS, native-объекты и код.</li>
+    <li>Snapshot до/после показывает удержанные объекты, но не гарантирует обнаружение краткого peak.</li>
+  </ul>
+
+  <h2>Источники</h2>
+  <ul>
+    <li><a href="https://unpkg.com/effect@4.0.0-rc.108/src/Stream.ts">Effect 4.0.0-rc.108: Stream source</a></li>
+    <li><a href="https://nodejs.org/api/process.html#processmemoryusage">Node.js: process.memoryUsage</a></li>
+    <li><a href="https://nodejs.org/en/learn/diagnostics/memory/using-heap-snapshot">Node.js: Using Heap Snapshot</a></li>
+  </ul>
+
+  <footer>Справочник фиксирует контракт E2.7, но не содержит готовой реализации typed adapter. Вопросы по границе producer/adapter/consumer можно задавать агенту.</footer>
+</article></main>
+</body>
+</html>
