@@ -2,7 +2,7 @@ import { describe, it } from '@effect/vitest';
 import { Effect, Stream } from 'effect';
 
 import { Driver } from '#drivers/driver.js';
-import { selectAll } from '#query/statements.js';
+import * as Q from '#query/index.js';
 import { streamFromSelect } from '#query/typed-stream.js';
 import { integer } from '#schema/columns.js';
 import { table } from '#schema/table.js';
@@ -41,7 +41,7 @@ describe('typed stream test', () => {
         [10],
       );
 
-      const all = selectAll(totalsTable);
+      const all = Q.selectAll(totalsTable);
       const stream = streamFromSelect(all, 2);
       const fold = Stream.runFold(
         stream,

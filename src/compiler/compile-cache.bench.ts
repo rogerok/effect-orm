@@ -4,7 +4,7 @@ import type { SelectIR } from '#compiler/ir.js';
 
 import { makeCompileCache } from '#compiler/compile-cache.js';
 import { compile } from '#compiler/compiler.js';
-import { and, col, eq, lit } from '#compiler/ir-constructors.js';
+import * as IR from '#compiler/ir-constructors.js';
 import { PgDialect } from '#dialect.js';
 
 const N = 10_000;
@@ -16,8 +16,8 @@ const bigIr = (): SelectIR => ({
   columns: '*',
   joins: [],
   orderBy: [],
-  where: and(
-    ...Array.from({ length: 500 }, (_, i) => eq(col(`c${i}`), lit(i))),
+  where: IR.and(
+    ...Array.from({ length: 500 }, (_, i) => IR.eq(IR.col(`c${i}`), IR.lit(i))),
   ),
 });
 

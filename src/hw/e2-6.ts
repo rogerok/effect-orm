@@ -3,7 +3,7 @@ import { Effect, Exit, Request, RequestResolver } from 'effect';
 import type { Driver } from '#drivers/driver.js';
 import type { DriverError } from '#errors/errors.js';
 
-import { col, isIn, lit, selectAll } from '#query/index.js';
+import * as Q from '#query/index.js';
 import { run } from '#query/typed-run.js';
 import { integer, nullable, primaryKey, text } from '#schema/columns.js';
 import { table } from '#schema/table.js';
@@ -31,8 +31,8 @@ export const UserByIdResolver = RequestResolver.make<GetUserById>((entries) =>
   Effect.gen(function* () {
     const ids = entries.map((entry) => entry.request.id);
     const users = yield* run(
-      selectAll(usersTable, {
-        where: isIn(col(usersTable, 'id'), ids.map(lit)),
+      Q.selectAll(usersTable, {
+        where: Q.isIn(Q.col(usersTable, 'id'), ids.map(Q.lit)),
       }),
     ).pipe(Effect.provideContext(entries[0].context));
 
@@ -74,8 +74,8 @@ export const PostsByUserIdResolver = RequestResolver.make<GetPostsByUserId>(
     Effect.gen(function* () {
       const ids = entries.map((entry) => entry.request.userId);
       const posts = yield* run(
-        selectAll(postsTable, {
-          where: isIn(col(postsTable, 'userId'), ids.map(lit)),
+        Q.selectAll(postsTable, {
+          where: Q.isIn(Q.col(postsTable, 'userId'), ids.map(Q.lit)),
         }),
       ).pipe(Effect.provideContext(entries[0].context));
 

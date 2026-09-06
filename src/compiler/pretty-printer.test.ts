@@ -1,19 +1,6 @@
 import type { DeleteIR, InsertIR, SelectIR, UpdateIR } from '#compiler/ir.js';
 
-import {
-  and,
-  between,
-  col,
-  eq,
-  gt,
-  isIn,
-  isNotNull,
-  isNull,
-  like,
-  lit,
-  not,
-  or,
-} from '#compiler/ir-constructors.js';
+import * as IR from '#compiler/ir-constructors.js';
 import { prettyPrint } from '#compiler/pretty-printer.js';
 
 describe('pretty printer test', () => {
@@ -23,18 +10,18 @@ describe('pretty printer test', () => {
       joins: [],
       columns: [
         {
-          expr: col('id'),
+          expr: IR.col('id'),
         },
         {
-          expr: col('name'),
+          expr: IR.col('name'),
         },
       ],
-      orderBy: [{ expr: col('name'), dir: 'asc' }],
+      orderBy: [{ expr: IR.col('name'), dir: 'asc' }],
       from: {
         table: 'users',
       },
       limit: 10,
-      where: gt(col('age'), lit(18)),
+      where: IR.gt(IR.col('age'), IR.lit(18)),
     };
 
     expect(prettyPrint(ir)).toMatchInlineSnapshot(
@@ -45,11 +32,11 @@ describe('pretty printer test', () => {
   it('selection printing with join', () => {
     const columns: SelectIR['columns'] = [
       {
-        expr: col('id', 'u'),
+        expr: IR.col('id', 'u'),
         alias: 'userId',
       },
       {
-        expr: col('title', 'p'),
+        expr: IR.col('title', 'p'),
         alias: 'postTitle',
       },
     ];
@@ -59,13 +46,13 @@ describe('pretty printer test', () => {
         kind: 'inner',
         table: 'posts',
         alias: 'p',
-        on: eq(col('id', 'u'), col('userId', 'p')),
+        on: IR.eq(IR.col('id', 'u'), IR.col('userId', 'p')),
       },
     ];
 
-    const where = and(
-      like(col('name', 'u'), lit("%O'Reilly%")),
-      not(isNull(col('title', 'p'))),
+    const where = IR.and(
+      IR.like(IR.col('name', 'u'), IR.lit("%O'Reilly%")),
+      IR.not(IR.isNull(IR.col('title', 'p'))),
     );
 
     const ir: SelectIR = {
@@ -85,11 +72,15 @@ describe('pretty printer test', () => {
 
   it('insert printing', () => {
     const rows: InsertIR['rows'] = [
-      { name: lit('Alice'), active: lit(true), nickname: lit(null) },
-      { name: lit("O'Reilly"), active: lit(false), nickname: lit(null) },
+      { name: IR.lit('Alice'), active: IR.lit(true), nickname: IR.lit(null) },
+      {
+        name: IR.lit("O'Reilly"),
+        active: IR.lit(false),
+        nickname: IR.lit(null),
+      },
     ];
 
-    const returning: InsertIR['returning'] = [{ expr: col('id') }];
+    const returning: InsertIR['returning'] = [{ expr: IR.col('id') }];
 
     const ir: InsertIR = {
       _tag: 'Insert',
@@ -109,10 +100,10 @@ describe('pretty printer test', () => {
       table: 'users',
       returning: '*',
       set: {
-        active: lit(false),
-        name: lit('Bob'),
+        active: IR.lit(false),
+        name: IR.lit('Bob'),
       },
-      where: isIn(col('id'), [lit(1), lit(2)]),
+      where: IR.isIn(IR.col('id'), [IR.lit(1), IR.lit(2)]),
     };
 
     expect(prettyPrint(ir)).toMatchInlineSnapshot(
@@ -125,9 +116,9 @@ describe('pretty printer test', () => {
       _tag: 'Delete',
       returning: null,
       from: 'users',
-      where: or(
-        between(col('age'), lit(18), lit(65)),
-        isNotNull(col('deleted_at')),
+      where: IR.or(
+        IR.between(IR.col('age'), IR.lit(18), IR.lit(65)),
+        IR.isNotNull(IR.col('deleted_at')),
       ),
     };
 

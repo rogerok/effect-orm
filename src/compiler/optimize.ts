@@ -1,6 +1,6 @@
 import type { Predicate, SelectIR } from '#compiler/ir.js';
 
-import { and, bool, or } from '#compiler/ir-constructors.js';
+import * as IR from '#compiler/ir-constructors.js';
 
 export const optimizePredicate = (input: Predicate): Predicate => {
   if (input._tag === 'Not' && input.pred._tag === 'Not') {
@@ -9,7 +9,7 @@ export const optimizePredicate = (input: Predicate): Predicate => {
 
   if (input._tag === 'And') {
     if (input.preds.length === 0) {
-      return bool(true);
+      return IR.bool(true);
     }
 
     const pred = input.preds[0];
@@ -34,14 +34,14 @@ export const optimizePredicate = (input: Predicate): Predicate => {
       }
 
       if (preds.length === 0) {
-        return bool(true);
+        return IR.bool(true);
       }
 
       if (preds.length === 1 && preds[0]) {
         return preds[0];
       }
 
-      return and(...preds);
+      return IR.and(...preds);
     }
   }
 
@@ -60,7 +60,7 @@ export const optimizePredicate = (input: Predicate): Predicate => {
 
   if (input._tag === 'Eq') {
     if (input.left._tag === 'Literal' && input.right._tag === 'Literal') {
-      return bool(input.left.value === input.right.value);
+      return IR.bool(input.left.value === input.right.value);
     }
   }
 
@@ -82,14 +82,14 @@ export const optimizePredicate = (input: Predicate): Predicate => {
     }
 
     if (preds.length === 0) {
-      return bool(false);
+      return IR.bool(false);
     }
 
     if (preds.length === 1 && preds[0] !== undefined) {
       return preds[0];
     }
 
-    return or(...preds);
+    return IR.or(...preds);
   }
 
   return input;

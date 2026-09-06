@@ -1,7 +1,7 @@
 import { Effect, Stream } from 'effect';
 
 import { Driver } from '#drivers/driver.js';
-import { selectAll } from '#query/index.js';
+import * as Q from '#query/index.js';
 import { streamFromSelect } from '#query/typed-stream.js';
 import { integer } from '#schema/columns.js';
 import { table } from '#schema/table.js';
@@ -58,7 +58,7 @@ const program = Effect.gen(function* () {
 
   const before = yield* takeMeasurement('before');
 
-  const all = selectAll(totalsTable);
+  const all = Q.selectAll(totalsTable);
   const stream = streamFromSelect(all, 2);
   const fold = Stream.runFold(
     stream,

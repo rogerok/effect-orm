@@ -1,7 +1,6 @@
 import { Effect } from 'effect';
 
-import { and, col, gt, isNotNull, lit, select } from '#query/index.js';
-import { insert } from '#query/statements.js';
+import * as Q from '#query/index.js';
 import { run } from '#query/typed-run.js';
 import { integer, nullable, primaryKey, text } from '#schema/columns.js';
 import { table } from '#schema/table.js';
@@ -15,18 +14,18 @@ const users = table('users', {
 
 const program = Effect.gen(function* () {
   const adults = yield* run(
-    select(users, ['id', 'name'] as const, {
-      where: and(
-        gt(col(users, 'age'), lit(18)),
-        isNotNull(col(users, 'email')),
+    Q.select(users, ['id', 'name'] as const, {
+      where: Q.and(
+        Q.gt(Q.col(users, 'age'), Q.lit(18)),
+        Q.isNotNull(Q.col(users, 'email')),
       ),
-      orderBy: [{ expr: col(users, 'name'), dir: 'asc' }],
+      orderBy: [{ expr: Q.col(users, 'name'), dir: 'asc' }],
       limit: 100,
     }),
   );
 
   const [created] = yield* run(
-    insert(users, [{ name: 'Name', email: 'example@mail.com', age: 30 }], {
+    Q.insert(users, [{ name: 'Name', email: 'example@mail.com', age: 30 }], {
       returning: ['id'] as const,
     }),
   );

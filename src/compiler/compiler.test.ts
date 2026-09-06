@@ -3,7 +3,7 @@ import { expect } from 'vitest';
 import type { SelectIR } from '#compiler/ir.js';
 
 import { compile } from '#compiler/compiler.js';
-import { between, col, lit } from '#compiler/ir-constructors.js';
+import * as IR from '#compiler/ir-constructors.js';
 import { PgDialect } from '#dialect.js';
 
 describe('Predicate Between test', () => {
@@ -16,7 +16,7 @@ describe('Predicate Between test', () => {
       from: {
         table: 'users',
       },
-      where: between(col('age', 'users'), lit(18), lit(65)),
+      where: IR.between(IR.col('age', 'users'), IR.lit(18), IR.lit(65)),
     };
 
     const compiled = compile(select, PgDialect);
