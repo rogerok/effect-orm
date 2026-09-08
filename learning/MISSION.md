@@ -2,11 +2,14 @@
 
 ## Why
 
-Построить fluent API поверх уже работающего typed AST, не создавая второй compiler и не смешивая query construction с I/O. Практическая проблема текущего кода: single-table запросы собираются через функции и options-объекты, а существующий JoinIR ещё не даёт безопасного API для aliases и joined columns.
+Построить fluent API поверх уже работающего typed AST, не создавая второй compiler и не смешивая query construction с
+I/O. Практическая проблема текущего кода: single-table запросы собираются через функции и options-объекты, а
+существующий JoinIR ещё не даёт безопасного API для aliases и joined columns.
 
 ## Success looks like
 
-- Восстановить путь `schema → typed wrapper → runtime IR → compiler → Driver` и разделить runtime state, type-only state и Effect environment.
+- Восстановить путь `schema → typed wrapper → runtime IR → compiler → Driver` и разделить runtime state, type-only state
+  и Effect environment.
 - Спроектировать FSM через `SelectQueryBuilder<S>` и `ExecutableQuery<R>` с разными наборами доступных методов.
 - Сохранить alias literal в `SourceMap` и вывести допустимые column references из `TableDef`.
 - Реализовать минимальный immutable single-table SELECT до перехода к join.
@@ -17,7 +20,8 @@
 
 ## Constraints
 
-- Backend-код и backend-тесты пишет пользователь; наставник диагностирует модель, даёт минимальный следующий шаг и проверяет observable result.
+- Backend-код и backend-тесты пишет пользователь; наставник диагностирует модель, даёт минимальный следующий шаг и
+  проверяет observable result.
 - Один шаг — одна новая причинная связь или один небольшой API transition.
 - Builder остаётся front-end к существующему `SelectIR`; compiler и dialect layer не дублируются.
 - Сначала single-table query, затем INNER JOIN, затем LEFT JOIN nullability.
@@ -26,7 +30,8 @@
 
 ## Current step
 
-L3.1 из [roadmap](roadmap.md): задать FSM допустимых вызовов через разные поверхности `SelectQueryBuilder<S>` и `ExecutableQuery<R>`. До runtime-реализации нужно определить valid/invalid sequences и проверить, что недопустимые переходы выражаются отсутствием метода.
+L3.5 из [roadmap](roadmap.md): ввести immutable `Builder`, который хранит runtime query shape отдельно от type-only
+`SourceMap`. Каждый modifier должен возвращать новый builder и не менять общий prefix или sibling branch.
 
 ## Out of scope
 

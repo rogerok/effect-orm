@@ -67,6 +67,8 @@
 ## Урок 3: Phantom-typed Builder
 
 29. [0029 — модель runtime/type-only границы подтверждена](0029-l3-0-boundary-model-confirmed.md): L3.0 закрыт — классификация шести элементов, двойная жизнь alias, TS2693 для `S`-как-значения и IR как единственная валюта до компилятора.
+30. [0030 — FSM, single-source SourceMap и contextual col подтверждены](0030-l3-fsm-sourcemap-contextual-col.md): два состояния запрещают неверный порядок методов, literal alias сохраняет конкретный `TableDef`, а `col` связывает alias/column с точным `Expr<T>` и обычным runtime IR.
+31. [0031 — immutable Builder разделяет runtime и type-only state](0031-l3-5-immutable-builder-state.md): `selectFrom` создаёт начальный runtime state без `SourceMap`, modifier сохраняет общий prefix, а structural sharing остаётся безопасным только при запрете мутации.
 
 ## Опорные справочники
 

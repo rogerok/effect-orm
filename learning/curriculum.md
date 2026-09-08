@@ -2,17 +2,24 @@
 
 ## Назначение маршрута
 
-Проект — самостоятельный пакет ORM/query builder, а не HTTP-приложение. Практический результат маршрута: библиотека, которая строит типобезопасные запросы, исполняет их через Effect-драйверы, корректно управляет ресурсами и транзакциями и может обновлять схему БД через миграции.
+Проект — самостоятельный пакет ORM/query builder, а не HTTP-приложение. Практический результат маршрута: библиотека,
+которая строит типобезопасные запросы, исполняет их через Effect-драйверы, корректно управляет ресурсами и транзакциями
+и может обновлять схему БД через миграции.
 
-Маршрут начинается с фактического состояния: foundation и основной Free/AST-пайплайн урока 2 уже реализованы; следующий незавершённый продуктовый пробел — неудобная сборка `SelectIR` через функции и options-объекты без fluent API и безопасных aliases для join.
+Маршрут начинается с фактического состояния: foundation и основной Free/AST-пайплайн урока 2 уже реализованы; следующий
+незавершённый продуктовый пробел — неудобная сборка `SelectIR` через функции и options-объекты без fluent API и
+безопасных aliases для join.
 
-Шкала mastery находится в [progress.md](progress.md). Каждая фаза завершается наблюдаемой проверкой и объяснением решения своими словами. Наличие кода без такой проверки не означает mastery.
+Шкала mastery находится в [progress.md](progress.md). Каждая фаза завершается наблюдаемой проверкой и объяснением
+решения своими словами. Наличие кода без такой проверки не означает mastery.
 
 ## Фаза 0. Вход в урок 3: восстановить границы существующего пайплайна
 
 **Цель:** не строить новый builder поверх неверной модели уже существующих слоёв.
 
-**Функциональность:** новая функциональность не добавляется; фиксируется путь `schema value → typed constructor → runtime AST → compile → Driver → Effect` и граница compile-time обещания формы строки.
+**Функциональность:** новая функциональность не добавляется; фиксируется путь
+`schema value → typed constructor → runtime AST → compile → Driver → Effect` и граница compile-time обещания формы
+строки.
 
 **Предыдущие знания:** реализованные schema definitions, AST, compiler, typed `run`, Stream и драйверы.
 
@@ -39,15 +46,19 @@
 
 **Практические задачи:** входная диагностика; один ручной прогноз AST/SQL; карта ответственности модулей.
 
-**Критерии mastery:** пользователь своими словами восстанавливает весь путь запроса и правильно предсказывает, что удаление phantom marker меняет type safety, но не runtime AST.
+**Критерии mastery:** пользователь своими словами восстанавливает весь путь запроса и правильно предсказывает, что
+удаление phantom marker меняет type safety, но не runtime AST.
 
-**Что становится возможным:** проектировать builder как отдельный compile-time API, переиспользующий существующий runtime pipeline.
+**Что становится возможным:** проектировать builder как отдельный compile-time API, переиспользующий существующий
+runtime pipeline.
 
 ## Фаза 1. Fluent SELECT для одной таблицы
 
 **Цель:** устранить практическую проблему громоздкого options API, не добавляя join и Repository раньше необходимости.
 
-**Функциональность:** `Db.selectFrom(table, alias)` создаёт immutable builder; `where`, `orderBy`, `limit`, `offset` накапливают состояние; `select` завершает построение и возвращает executable query; `toIR` выдаёт существующий `SelectIR`.
+**Функциональность:** `Db.selectFrom(table, alias)` создаёт immutable builder; `where`, `orderBy`, `limit`, `offset`
+накапливают состояние; `select` завершает построение и возвращает executable query; `toIR` выдаёт существующий
+`SelectIR`.
 
 **Предыдущие знания:** TableDef, `Expr<T>`, `Pred`, SelectIR, smart constructors, compiler.
 
@@ -60,7 +71,7 @@
 
 ### Implementation
 
-- Описать `BuilderState` без дублирования IR-семантики.
+- Описать `Builder` без дублирования IR-семантики.
 - Реализовать single-source `ExpressionBuilder` и projection callback.
 - Перевести projection object в IR aliases.
 - Реализовать `SelectQueryBuilder<S>` и `ExecutableQuery<R>` с разными наборами методов.
@@ -74,20 +85,25 @@
 ### Debugging
 
 - Читать ошибки `keyof`, indexed access и generic inference от alias/column.
-- Находить расхождение между type state и runtime `BuilderState` через `toIR()`.
-- Проверять повторный `where`: новый предикат не должен молча стирать предыдущий, если контракт fluent API предполагает их совместное действие.
+- Находить расхождение между type state и runtime `Builder` через `toIR()`.
+- Проверять повторный `where`: новый предикат не должен молча стирать предыдущий, если контракт fluent API предполагает
+  их совместное действие.
 
-**Практические задачи:** минимальный `selectFrom`; один модификатор за шаг; projection; compile-only negative cases; fork двух запросов от общего builder.
+**Практические задачи:** минимальный `selectFrom`; один модификатор за шаг; projection; compile-only negative cases;
+fork двух запросов от общего builder.
 
-**Критерии mastery:** корректный AST/SQL single-table запроса; тип результата точно соответствует projection; `execute` недоступен до `select`, а `where` недоступен после него; исходный builder не мутируется.
+**Критерии mastery:** корректный AST/SQL single-table запроса; тип результата точно соответствует projection; `execute`
+недоступен до `select`, а `where` недоступен после него; исходный builder не мутируется.
 
-**Что становится возможным:** безопасно расширять контекст колонок при join и подключить исполнение без изменения compiler.
+**Что становится возможным:** безопасно расширять контекст колонок при join и подключить исполнение без изменения
+compiler.
 
 ## Фаза 2. Исполнение и cardinality contracts
 
 **Цель:** превратить готовый AST в Effect-native пользовательский API с явной семантикой количества строк.
 
-**Функциональность:** `execute()` возвращает массив; `executeOne()` различает отсутствие строки; строгий вариант различает ноль, одну и несколько строк; `executeStream()` переиспользует уже реализованный typed Stream adapter.
+**Функциональность:** `execute()` возвращает массив; `executeOne()` различает отсутствие строки; строгий вариант
+различает ноль, одну и несколько строк; `executeStream()` переиспользует уже реализованный typed Stream adapter.
 
 **Предыдущие знания:** typed `run`, `Driver`, `DriverError`, `NotFoundError`, `TooManyError`, `streamFromSelect`.
 
@@ -106,7 +122,8 @@
 ### Reasoning
 
 - Выбрать и назвать точную семантику каждого метода, не прятать несколько контрактов под одним названием.
-- Обосновать место assertion raw row → `R` или заменить её runtime decoding там, где проект получает достаточную metadata.
+- Обосновать место assertion raw row → `R` или заменить её runtime decoding там, где проект получает достаточную
+  metadata.
 
 ### Debugging
 
@@ -116,7 +133,8 @@
 
 **Практические задачи:** `execute`; три cardinality cases; Stream terminal; fake Driver для проверки SQL и вызовов.
 
-**Критерии mastery:** до terminal operation Driver не вызывается; каждый cardinality case возвращает ожидаемый success или точный tagged error; Stream не проходит через `executeRaw`.
+**Критерии mastery:** до terminal operation Driver не вызывается; каждый cardinality case возвращает ожидаемый success
+или точный tagged error; Stream не проходит через `executeRaw`.
 
 **Что становится возможным:** использовать builder в реальном joined query и затем в persistence facade.
 
@@ -124,7 +142,9 @@
 
 **Цель:** решить реальную неоднозначность одинаковых имён колонок из нескольких таблиц.
 
-**Функциональность:** `innerJoin(table, alias, on)` расширяет доступное пространство источников; `b.col(alias, column)` принимает только зарегистрированный alias и колонку соответствующей таблицы; projection объединяет колонки разных sources.
+**Функциональность:** `innerJoin(table, alias, on)` расширяет доступное пространство источников; `b.col(alias, column)`
+принимает только зарегистрированный alias и колонку соответствующей таблицы; projection объединяет колонки разных
+sources.
 
 **Предыдущие знания:** фаза 1, mapped types, `TableDef`, существующие `JoinIR` и compiler support.
 
@@ -155,7 +175,8 @@
 
 **Практические задачи:** один join; два join; одинаковое имя `id` у разных таблиц; неверные alias/column cases.
 
-**Критерии mastery:** валидный joined query компилируется и исполняется; три намеренно неверные ссылки отклоняются TypeScript; `toIR` показывает правильные table aliases и ON predicate.
+**Критерии mastery:** валидный joined query компилируется и исполняется; три намеренно неверные ссылки отклоняются
+TypeScript; `toIR` показывает правильные table aliases и ON predicate.
 
 **Что становится возможным:** корректно моделировать LEFT JOIN nullability и richer query features.
 
@@ -163,7 +184,8 @@
 
 **Цель:** не обещать `string`, когда SQL вправе вернуть `NULL` для отсутствующей joined row.
 
-**Функциональность:** sources содержат metadata `{ table, nullable }`; inner source остаётся non-nullable, right side LEFT JOIN становится nullable; projection отражает это как `T | null`.
+**Функциональность:** sources содержат metadata `{ table, nullable }`; inner source остаётся non-nullable, right side
+LEFT JOIN становится nullable; projection отражает это как `T | null`.
 
 **Предыдущие знания:** SourceMap, `InferColumn`, SQL join semantics.
 
@@ -193,13 +215,16 @@
 
 **Критерии mastery:** runtime `NULL` и compile-time `T | null` совпадают; inner join не получает лишний `null`.
 
-**Что становится возможным:** безопасные relation queries и Repository, которые не маскируют отсутствие связанных данных.
+**Что становится возможным:** безопасные relation queries и Repository, которые не маскируют отсутствие связанных
+данных.
 
 ## Фаза 5. Write builder и codec boundary
 
-**Цель:** убрать асимметрию: чтение имеет fluent API, а запись всё ещё требует прямых constructors; одновременно решить реальную границу TS value ↔ DB value.
+**Цель:** убрать асимметрию: чтение имеет fluent API, а запись всё ещё требует прямых constructors; одновременно решить
+реальную границу TS value ↔ DB value.
 
-**Функциональность:** typed `insertInto().values().returning()`, `update().set().where()`, `deleteFrom().where()`; codec metadata применяется там, где известны таблица и колонка.
+**Функциональность:** typed `insertInto().values().returning()`, `update().set().where()`, `deleteFrom().where()`; codec
+metadata применяется там, где известны таблица и колонка.
 
 **Предыдущие знания:** `InferInsert`, `InferUpdate`, Insert/Update/Delete IR, codecs, terminal execution.
 
@@ -227,9 +252,11 @@
 - Проверять affectedRows против returning rows.
 - Отличать schema mismatch от codec failure.
 
-**Практические задачи:** insert одной строки; multi-row insert; update/delete with where; returning subset; boolean/date round-trip на двух dialects.
+**Практические задачи:** insert одной строки; multi-row insert; update/delete with where; returning subset; boolean/date
+round-trip на двух dialects.
 
-**Критерии mastery:** compile-time запрещает неверные write values; runtime round-trip даёт одинаковые domain values на SQLite и PGlite; SQL values всегда параметризованы.
+**Критерии mastery:** compile-time запрещает неверные write values; runtime round-trip даёт одинаковые domain values на
+SQLite и PGlite; SQL values всегда параметризованы.
 
 **Что становится возможным:** Repository получает стабильный query/write primitive и оправдан повторяющимися use cases.
 
@@ -237,7 +264,8 @@
 
 **Цель:** скрыть повторяющуюся persistence-механику только после появления полного builder API.
 
-**Функциональность:** table-specific `findById`, `findOne`, `findMany`, `insert`, `update`, `delete`; выбор cardinality превращается в явный доменный контракт.
+**Функциональность:** table-specific `findById`, `findOne`, `findMany`, `insert`, `update`, `delete`; выбор cardinality
+превращается в явный доменный контракт.
 
 **Предыдущие знания:** read/write builder, tagged errors, codecs.
 
@@ -263,9 +291,11 @@
 - Локализовать дефект между builder result, mapping и domain invariant.
 - Отличать not found от connection/query failure.
 
-**Практические задачи:** один User repository; find/update not-found cases; mapping/validation error; второй repository как проверка абстракции.
+**Практические задачи:** один User repository; find/update not-found cases; mapping/validation error; второй repository
+как проверка абстракции.
 
-**Критерии mastery:** Repository не протекает raw SQL/driver rows наружу; методы имеют разные осмысленные contracts; abstraction удаляет реальный повтор.
+**Критерии mastery:** Repository не протекает raw SQL/driver rows наружу; методы имеют разные осмысленные contracts;
+abstraction удаляет реальный повтор.
 
 **Что становится возможным:** Identity Map и Unit of Work получают доменные entities и понятную persistence boundary.
 
@@ -273,7 +303,8 @@
 
 **Цель:** обеспечить атомарное изменение нескольких entities и предсказуемый lifecycle ресурсов.
 
-**Функциональность:** transaction API с rollback; nested transaction через savepoint; request/scoped Identity Map; Unit of Work собирает изменения и коммитит одной транзакцией.
+**Функциональность:** transaction API с rollback; nested transaction через savepoint; request/scoped Identity Map; Unit
+of Work собирает изменения и коммитит одной транзакцией.
 
 **Предыдущие знания:** Effect Scope/Fiber/Layer, Driver lifecycle, Repository, tagged errors.
 
@@ -304,15 +335,18 @@
 
 **Практические задачи:** two-write rollback; nested savepoint; repeated find identity; dirty tracking; commit failure.
 
-**Критерии mastery:** наблюдаемая атомарность на реальной БД; finalizers работают при success/failure/interruption; один scope не делит identity state с другим.
+**Критерии mastery:** наблюдаемая атомарность на реальной БД; finalizers работают при success/failure/interruption; один
+scope не делит identity state с другим.
 
-**Что становится возможным:** прикладные use cases могут безопасно изменять агрегаты; библиотека готова к migration lifecycle.
+**Что становится возможным:** прикладные use cases могут безопасно изменять агрегаты; библиотека готова к migration
+lifecycle.
 
 ## Фаза 8. Миграции и готовность пакета
 
 **Цель:** превратить учебный набор модулей в воспроизводимо собираемый и обновляемый пакет.
 
-**Функциональность:** migrations table, ordered `up`, checksum/duplicate protection, rollback policy; public entrypoint и build artifacts; одна documented end-to-end программа на поддерживаемых backends.
+**Функциональность:** migrations table, ordered `up`, checksum/duplicate protection, rollback policy; public entrypoint
+и build artifacts; одна documented end-to-end программа на поддерживаемых backends.
 
 **Предыдущие знания:** schema metadata, Driver, transactions, Node ESM/package exports.
 
@@ -325,7 +359,8 @@
 ### Implementation
 
 - Создать migrations runner на одном dialect, затем доказать portable subset или явные dialect migrations.
-- Добавить корректный `src/index.ts` только при формировании public API; сейчас package export указывает на `dist/index.*`, а source entrypoint отсутствует.
+- Добавить корректный `src/index.ts` только при формировании public API; сейчас package export указывает на
+  `dist/index.*`, а source entrypoint отсутствует.
 - Проверить clean install/build/import consumer scenario.
 
 ### Reasoning
@@ -340,11 +375,15 @@
 - Читать ESM resolution errors между development import condition и built package.
 - Отличать type declaration/export defect от runtime import defect.
 
-**Практические задачи:** migrations metadata table; две последовательные migrations; failure rollback; package entrypoint; consumer smoke test; backend compatibility matrix.
+**Практические задачи:** migrations metadata table; две последовательные migrations; failure rollback; package
+entrypoint; consumer smoke test; backend compatibility matrix.
 
-**Критерии mastery:** пустая БД приводится к ожидаемой schema; повторный migrate не меняет её; неуспешная migration не оставляет partial state; `pnpm build` создаёт импортируемый public package; end-to-end query проходит на заявленных backends.
+**Критерии mastery:** пустая БД приводится к ожидаемой schema; повторный migrate не меняет её; неуспешная migration не
+оставляет partial state; `pnpm build` создаёт импортируемый public package; end-to-end query проходит на заявленных
+backends.
 
-**Что становится возможным:** проект можно использовать как законченную минимальную ORM-библиотеку и развивать осознанными extension-фазами.
+**Что становится возможным:** проект можно использовать как законченную минимальную ORM-библиотеку и развивать
+осознанными extension-фазами.
 
 ## После core: расширения только по практической потребности
 
@@ -352,4 +391,5 @@
 - Relations API — отдельный mini-language; не требуется для завершения core ORM.
 - Db как Effect service — только если подмена всего facade даёт пользу поверх подмены Driver.
 - Optimistic locking, soft delete, replicas — после появления соответствующего прикладного требования.
-- HTTP boundary и authentication не входят в текущий продукт: добавлять их следует только при появлении отдельного приложения-потребителя.
+- HTTP boundary и authentication не входят в текущий продукт: добавлять их следует только при появлении отдельного
+  приложения-потребителя.

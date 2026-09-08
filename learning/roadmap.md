@@ -2,7 +2,9 @@
 
 ## Definition of done
 
-Законченным результатом считается минимальная ORM-библиотека: typed read/write builder, корректные INNER/LEFT JOIN types, Effect execution и streaming, Repository boundary, scoped transactions/Unit of Work, migrations и импортируемый package entrypoint. Relations DSL, replicas и schema diff — расширения, а не условие завершения.
+Законченным результатом считается минимальная ORM-библиотека: typed read/write builder, корректные INNER/LEFT JOIN
+types, Effect execution и streaming, Repository boundary, scoped transactions/Unit of Work, migrations и импортируемый
+package entrypoint. Relations DSL, replicas и schema diff — расширения, а не условие завершения.
 
 Каждый шаг проходит одинаковый цикл:
 
@@ -10,14 +12,16 @@
 concept → small task → пользователь реализует → агент проверяет → один comprehension check → следующий шаг
 ```
 
-Переход запрещён, пока проверка текущего observable contract красная или пользователь не может объяснить обнаруженную причинную связь.
+Переход запрещён, пока проверка текущего observable contract красная или пользователь не может объяснить обнаруженную
+причинную связь.
 
 ## Текущая точка: вход в урок 3
 
 ### L3.0 — Восстановить существующий vertical slice
 
 - **Concept:** builder является front-end к существующему AST.
-- **Small task:** на бумаге/в чате восстановить `table → Expr/Pred → Select<R> → compile → Driver` и назвать runtime/type-level части.
+- **Small task:** на бумаге/в чате восстановить `table → Expr/Pred → Select<R> → compile → Driver` и назвать
+  runtime/type-level части.
 - **Verification:** точный прогноз `_tag`, SQL и params для одного запроса.
 - **Comprehension:** почему новый builder не должен сам генерировать SQL?
 
@@ -25,7 +29,8 @@ concept → small task → пользователь реализует → аг�
 
 - **Concept:** состояние API выражается набором доступных методов.
 - **Small task:** выписать valid и invalid sequences для `SelectQueryBuilder` и `ExecutableQuery`.
-- **Verification:** compile-only examples показывают отсутствие `execute` до `select` и отсутствие `where` после `select`.
+- **Verification:** compile-only examples показывают отсутствие `execute` до `select` и отсутствие `where` после
+  `select`.
 - **Comprehension:** какую ошибку предотвращают два класса по сравнению с runtime flag?
 
 ### L3.2 — Создать single-source type environment
@@ -49,7 +54,7 @@ concept → small task → пользователь реализует → аг�
 - **Verification:** output structural equality с текущими `query/predicates.ts` constructors.
 - **Comprehension:** что сломается, если builder создаёт второй формат Predicate?
 
-### L3.5 — Ввести immutable `BuilderState`
+### L3.5 — Ввести immutable `Builder`
 
 - **Concept:** persistent builder хранит runtime state отдельно от SourceMap type.
 - **Small task:** создать начальное состояние `from/joins/orderBy` и метод, возвращающий новый экземпляр.
@@ -125,7 +130,8 @@ concept → small task → пользователь реализует → аг�
 
 - **Concept:** alias — уникальный key query namespace.
 - **Small task:** определить compile-time policy повторного alias.
-- **Verification:** повторный alias отклоняется или имеет явно задокументированную безопасную семантику; silent overwrite отсутствует.
+- **Verification:** повторный alias отклоняется или имеет явно задокументированную безопасную семантику; silent
+  overwrite отсутствует.
 - **Comprehension:** какой runtime SQL дефект скрывает пересечение с уже существующим key?
 
 ### L3.16 — Построить ON predicate в расширенном контексте

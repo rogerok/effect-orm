@@ -206,56 +206,191 @@
 - Изолированный запуск `pnpm exec node --input-type=module -e …` подтвердил порядок: `parent continues`, `child done`,
   `joined: 42`. Backend-файлы не изменялись. Ответ пользователя по этой теме ещё не получен; запись об освоении не
   создавать.
-- Текущая постоянная миссия уже относится к E2.7; этот запрос оформлен как тематический мост к безопасной конкурентности ORM, без изменения `MISSION.md`.
-- Созданы [интерактивный урок 0013](lessons/0013-effect-runtime-lifetimes.html) и [памятка](references/fiber-scope-fork.html). Симулятор пошагово показывает обычный `yield*`, `forkChild + join`, прерывание child при завершении parent, `forkScoped` и Pool(1) с двумя fibers.
-- Проверено в браузере: все пять сценариев доходят до конечного состояния (4/5/4/4/6 шагов), checkout Pool переходит от waiter к повторной выдаче Driver, тренажёр выбора API завершён с 4/4. Владение моделью пользователем пока не подтверждено; запись об освоении не создавать.
+- Текущая постоянная миссия уже относится к E2.7; этот запрос оформлен как тематический мост к безопасной конкурентности
+  ORM, без изменения `MISSION.md`.
+- Созданы [интерактивный урок 0013](lessons/0013-effect-runtime-lifetimes.html)
+  и [памятка](references/fiber-scope-fork.html). Симулятор пошагово показывает обычный `yield*`, `forkChild + join`,
+  прерывание child при завершении parent, `forkScoped` и Pool (1) с двумя fibers.
+- Проверено в браузере: все пять сценариев доходят до конечного состояния (4/5/4/4/6 шагов), checkout Pool переходит от
+  waiter к повторной выдаче Driver, тренажёр выбора API завершён с 4/4. Владение моделью пользователем пока не
+  подтверждено; запись об освоении не создавать.
 
 ## Текущий запрос: E2.7 потоковый full table scan
 
-- Пользователь явно перешёл к упражнению E2.7: typed `Stream` для full table scan, `Stream.runFold` по миллиону строк и измерение памяти. `MISSION.md` обновлена под этот наблюдаемый результат.
-- В текущем коде `DriverImpl.executeStream` уже объявлен; SQLite использует `stmt.iterate()`, PGlite — `Stream.paginate` с cursor/FETCH. Typed helper от `Select<R>` к `Stream<R, DriverError, Driver>` отсутствует. В libSQL остаётся `Stream.empty` с TODO; интеграция не входит в исходное упражнение для двух драйверов.
-- Формулировка «через builder API» не может означать fluent builder урока 3: такого модуля в проекте нет. Для E2.7 текущая граница — schema-typed API `selectAll(table)`.
-- Центральная диагностика: `Stream.fromIterableEffect(executeRaw(...).map(result => result.rows))` сохраняет наружный тип Stream, но материализует все rows до первого элемента. Ограниченная память требует постепенности producer, adapter без `executeRaw`/`runCollect` и fold с аккумулятором фиксированного размера.
-- Heap snapshot до/после показывает удержанную память и сам может удвоить heap; для пика дополнительно наблюдать `heapUsed`/RSS и сравнивать потоковый и материализующий сценарии в отдельных процессах.
-- Подготовлены [урок 0012](lessons/0012-stream-is-not-an-array.html) и [памятка](references/streaming-full-table-scan.html). Следующий ответ пользователя: объяснить, что уже загружено в память в контрпримере, кто тянет следующую порцию и что вправе удерживать `runFold`.
-- Владение моделью Stream пока не подтверждено; запись о результате обучения не создавать до ответа и пользовательской реализации.
-- Диагностика урока 0012: пользователь верно определил, что `executeRaw(...).rows` уже содержит весь массив и что следующую порцию должен запрашивать consumer. Граница аккумулятора `runFold` пока не ясна. Следующий шаг — сравнить scalar accumulator с накоплением массива и связать память с размером состояния между итерациями.
-- Пользователь верно предсказал, что `{ sum, count, lastRow }` не растёт с числом строк, но связал это с тем, что `lastRow` «никуда не записывается». Уточнить: поле как раз удерживает одну последнюю строку; постоянная память получается из перезаписи ссылки, после которой предыдущая строка становится достижимой только при наличии других ссылок.
-- Пользователь верно перенёс ранее освоенную границу Effect на Stream: получение Driver и compile должны выполняться при terminal operation (`runFold`), потому что до запуска строится только описание программы. Следующий шаг — самостоятельно собрать `src/query/typed-stream.ts` через `Stream.unwrap`, сохранив `Driver` в environment и не вызывая `executeRaw`.
-- В первой попытке `src/query/typed-stream.ts` четыре ошибки типов: `Driver` импортирован через `import type`, `yield*` применён к `Stream`, `chunkSize` передан объектом вместо числа, а raw element `Record<string, unknown>` ещё не связан с generic `R`. `pnpm check-types` воспроизводит ошибки за ~1 с. Сначала пользователь исправляет первые три механические ошибки; ожидаемый оставшийся красный сигнал — только граница raw row → `R`, которую затем разберём отдельно.
-- Пользователь исправил три механические ошибки в `typed-stream.ts`: Driver теперь value import, внутренний Stream возвращается без `yield*`, `chunkSize` передаётся числом. LSP оставляет ровно ожидаемую TS2375: raw `Record<string, unknown>` нельзя присвоить произвольному `R`. Следующий шаг — сопоставить эту границу с `typed-run.ts:51-53` и назвать, какое непроверяемое runtime-предположение там кодирует assertion.
-- Пользователь отнёс гарантию raw row → `R` к самому `Select<R>` и отметил уже корректные error/environment channels. Уточнить: `Select<R>` только переносит compile-time обещание; истинность формы строки поддерживает вся связка table definition → typed constructor → compiler → фактическая DB schema. Runtime validation отсутствует, поэтому typed stream, как и typed run, нуждается в явной assertion boundary.
-- Пользователь добавил per-element assertion через `Stream.map`; LSP и `pnpm check-types` чистые. Изолированный smoke test с fake Driver подтвердил: до `runFold` вызовов `executeStream` нет, после — один; переданы SQL `SELECT * FROM "totals"`, `params = []`, `chunkSize = 17`; строки `2` и `3` дали `{ count: 2, sum: 5 }`. Результат записан в [0025](records/0025-typed-stream-preserves-laziness.md). Следующий шаг — маленький сквозной сценарий на реальном SQLite до миллионной нагрузки.
-- При написании SQLite-сценария пользователь задал `runFold` initial как число `0`, но reducer попытался вернуть `{ sum, count }`. Объяснить единый accumulator type `Z`: initial и каждый результат reducer имеют одну форму; для двух агрегатов initial должен быть `{ sum: 0, count: 0 }`, `sum` обновляется из `acc.sum`, `count` увеличивается на один. Также подчеркнуть, что `runFold` возвращает Effect и внутри `Effect.gen` требует `yield*`.
-- Пользователь создал `src/query/typed-stream.test.ts` и спросил про raw multi-row INSERT. Текущий SQL перечисляет одну target column `(amount)`, но один VALUES tuple с тремя выражениями, поэтому нарушает cardinality: для трёх строк нужны три одноэлементных tuple. Также до прогона видны два независимых несоответствия: SQLite path должен быть `:memory:`, а assertion ожидает поле `amount`, хотя fold возвращает поле `sum`.
-- Пользователь не увидел принципиальную разницу между `VALUES (?, ?, ?)` и `VALUES (?), (?), (?)`. Обнаруженный пробел — SQL VALUES как матрица: выражения внутри одного tuple соответствуют столбцам одной строки, а отдельные tuple соответствуют разным строкам. Закрепить прогнозом для двух столбцов и двух строк.
-- В проверке SQL VALUES пользователь правильно создал две tuple, но поместил внутрь имена столбцов `(amount, label)` вместо значений строк. Следующий уровень подсказки: отделить единственный header `(amount, label)` после имени таблицы от data tuples после VALUES и заполнить четыре конкретных значения.
-- Пользователь после подсказки правильно разделил две строки и два значения внутри каждой tuple; осталась только синтаксическая опечатка — незакрытая кавычка у `'first'`. Концептуальная модель VALUES как матрицы подтверждена; дальше применить её к трём одноэлементным строкам исходного INSERT и прогнать SQLite-тест.
-- Пользователь исправил multi-row INSERT, in-memory path и expected result. `pnpm test src/query/typed-stream.test.ts` прошёл: 1 файл, 1 тест, 12 ms; LSP чистый. Сквозной путь через реальный SQLite вернул `{ count: 3, sum: 60 }`; результат записан в [0026](records/0026-sqlite-stream-fold-end-to-end.md). Тест пока имеет пустое имя. Следующая смысловая граница — подготовить миллион строк без массива JS, иначе setup загрязнит измерение heap.
-- Пользователь верно выбрал DB-side generation для миллионного setup: JS `Array.from` может удерживать миллион row-объектов и в любом случае загрязняет heap/peak до scan. Нужна первая буквальная модель recursive CTE на диапазоне 1..5, затем масштабирование до 1_000_000; отдельно предупредить, что `:memory:` SQLite хранит сами DB pages в native memory, поэтому heapUsed и RSS отвечают на разные вопросы.
-- Пользователь сообщил, что почти не знает БД и не понимает, как собрать recursive CTE INSERT. Снизить шаг: представить CTE как временный именованный результат `seq(n)`, отдельно показать seed, recursive step и consumer INSERT; дать неполный SQL с отверстиями только для table/column и сначала ограничить диапазон десятью строками. Не переходить к миллиону и памяти до успешного малого запуска.
-- Пользователь сразу поставил recursive CTE limit `1_000_000`, но оставил старый oracle `{ count: 3, sum: 60 }`. Узкий тест выполнил scan за 764 ms и вернул `{ count: 1_000_000, sum: 500_000_500_000 }`; failure только в stale assertion, LSP чистый. Постоянный тест не должен держать миллион строк: он не отличает streaming от скрытого `executeRaw/all` и добавляет ~0.8 s к suite. Вернуть малый N с точным oracle, дать тесту имя; миллион вынести в отдельный memory experiment.
-- Пользователь вернул постоянный SQLite-тест к N=10, дал `it.effect` имя и обновил oracle `{ count: 10, sum: 55 }`. Повторный узкий прогон прошёл: 1 файл, 1 тест, 15 ms; LSP чистый. `describe` пока остаётся общим `typed stream test`, но контракт теста читаем. Следующий шаг — standalone `src/hw/e2-7.ts`: миллионный CTE и fold без Vitest, затем memory protocol.
-- Standalone запуск через `pnpm exec tsx` дошёл до package import map и выбрал `default: ./dist/*`, поэтому `#query/index.js` искался в отсутствующем `dist`. Проверенная команда для исходников: `node --conditions=development --import tsx src/hw/e2-7.ts`; она выбирает `development: ./src/*`. После исправления resolution проявился следующий точный дефект: CTE заканчивается после `)`, без statement-потребителя, поэтому SQLite возвращает `incomplete input`. Нужно дописать `INSERT INTO ... SELECT n FROM seq`, вернуть fold result из program и вывести resolved Promise.
-- Пользователь дописал CTE consumer, вернул fold result и запустил standalone с development condition. Наблюдение: `{ sum: 500000500000, count: 1000000 }`, 1.11 s, LSP чистый; результат записан в [0027](records/0027-million-row-stream-fold.md). Функциональная часть E2.7 завершена; остались heap snapshots и честная интерпретация retained heap против native SQLite/RSS и peak.
-- Первый memory run вернул `after: { _id: 'Effect', op: 'Sync' }`: строка 69 сохраняет `takeMeasurement('after')` без `yield*`, причём расположена до исполнения fold. LSP чистый, потому что неисполненный Effect является допустимым значением объекта — это семантическая, не типовая ошибка. До исправления создан только `/tmp/e2-7-before.heapsnapshot.` (~20.6 MB); trailing dot пришёл из filename template, after snapshot отсутствует. Следующий шаг: result = yield* fold, затем after = yield* measurement, убрать trailing dot.
-- Исправленный memory run создал оба snapshot: before 20,564,647 B, after 20,636,032 B; LSP чистый. После forced GC `heapUsed` снизился с 27,393,424 до 26,798,632 B (−594,792 B), `heapTotal` снизился на 5 MiB, `external` снизился на 1,061,976 B, `arrayBuffers` не изменился. Это свидетельство отсутствия миллиона удержанных JS row-объектов после fold. RSS вырос на 99,368,960 B (~94.77 MiB), но его нельзя приписать scan: первая heap snapshot строится после before memory sample и сама временно может удвоить heap; allocator может не вернуть страницы ОС. Финальная проверка понимания — объяснить, почему heapUsed поддерживает вывод о retention, а RSS delta не доказывает leak или peak scan.
-- Пользователь не смог интерпретировать расхождение heapUsed↓ и RSS↑. Перейти к числовому контрпримеру: snapshot временно запрашивает у ОС ~100 MiB, затем JS-объекты освобождаются, но allocator сохраняет страницы; heapUsed считает живые V8 objects после forced GC, RSS — все принадлежащие процессу resident pages. Следующая проверка должна быть бинарной: мог бы heapUsed остаться ~27 MiB после GC, если бы достижимый массив действительно удерживал миллион row objects?
-- Пользователь правильно ответил на бинарный контрпример: forced GC не смог бы вернуть `heapUsed` к исходному уровню, если бы достижимый массив удерживал миллион строк. Граница retained V8 heap против RSS подтверждена и записана в [0028](records/0028-heap-retention-versus-rss.md). Обязательная часть E2.7 завершена: typed adapter, SQLite integration test, миллионный fold, before/after snapshots и корректная интерпретация retention.
+- Пользователь явно перешёл к упражнению E2.7: typed `Stream` для full table scan, `Stream.runFold` по миллиону строк и
+  измерение памяти. `MISSION.md` обновлена под этот наблюдаемый результат.
+- В текущем коде `DriverImpl.executeStream` уже объявлен; SQLite использует `stmt.iterate()`, PGlite — `Stream.paginate`
+  с cursor/FETCH. Typed helper от `Select<R>` к `Stream<R, DriverError, Driver>` отсутствует. В libSQL остаётся
+  `Stream.empty` с TODO; интеграция не входит в исходное упражнение для двух драйверов.
+- Формулировка «через builder API» не может означать fluent builder урока 3: такого модуля в проекте нет. Для E2.7
+  текущая граница — schema-typed API `selectAll(table)`.
+- Центральная диагностика: `Stream.fromIterableEffect(executeRaw(...).map(result => result.rows))` сохраняет наружный
+  тип Stream, но материализует все rows до первого элемента. Ограниченная память требует постепенности producer, adapter
+  без `executeRaw`/`runCollect` и fold с аккумулятором фиксированного размера.
+- Heap snapshot до/после показывает удержанную память и сам может удвоить heap; для пика дополнительно наблюдать
+  `heapUsed`/RSS и сравнивать потоковый и материализующий сценарии в отдельных процессах.
+- Подготовлены [урок 0012](lessons/0012-stream-is-not-an-array.html)
+  и [памятка](references/streaming-full-table-scan.html). Следующий ответ пользователя: объяснить, что уже загружено в
+  память в контрпримере, кто тянет следующую порцию и что вправе удерживать `runFold`.
+- Владение моделью Stream пока не подтверждено; запись о результате обучения не создавать до ответа и пользовательской
+  реализации.
+- Диагностика урока 0012: пользователь верно определил, что `executeRaw(...).rows` уже содержит весь массив и что
+  следующую порцию должен запрашивать consumer. Граница аккумулятора `runFold` пока не ясна. Следующий шаг — сравнить
+  scalar accumulator с накоплением массива и связать память с размером состояния между итерациями.
+- Пользователь верно предсказал, что `{ sum, count, lastRow }` не растёт с числом строк, но связал это с тем, что
+  `lastRow` «никуда не записывается». Уточнить: поле как раз удерживает одну последнюю строку; постоянная память
+  получается из перезаписи ссылки, после которой предыдущая строка становится достижимой только при наличии других
+  ссылок.
+- Пользователь верно перенёс ранее освоенную границу Effect на Stream: получение Driver и compile должны выполняться при
+  terminal operation (`runFold`), потому что до запуска строится только описание программы. Следующий шаг —
+  самостоятельно собрать `src/query/typed-stream.ts` через `Stream.unwrap`, сохранив `Driver` в environment и не вызывая
+  `executeRaw`.
+- В первой попытке `src/query/typed-stream.ts` четыре ошибки типов: `Driver` импортирован через `import type`, `yield*`
+  применён к `Stream`, `chunkSize` передан объектом вместо числа, а raw element `Record<string, unknown>` ещё не связан
+  с generic `R`. `pnpm check-types` воспроизводит ошибки за ~1 с. Сначала пользователь исправляет первые три
+  механические ошибки; ожидаемый оставшийся красный сигнал — только граница raw row → `R`, которую затем разберём
+  отдельно.
+- Пользователь исправил три механические ошибки в `typed-stream.ts`: Driver теперь value import, внутренний Stream
+  возвращается без `yield*`, `chunkSize` передаётся числом. LSP оставляет ровно ожидаемую TS2375: raw
+  `Record<string, unknown>` нельзя присвоить произвольному `R`. Следующий шаг — сопоставить эту границу с
+  `typed-run.ts:51-53` и назвать, какое непроверяемое runtime-предположение там кодирует assertion.
+- Пользователь отнёс гарантию raw row → `R` к самому `Select<R>` и отметил уже корректные error/environment channels.
+  Уточнить: `Select<R>` только переносит compile-time обещание; истинность формы строки поддерживает вся связка table
+  definition → typed constructor → compiler → фактическая DB schema. Runtime validation отсутствует, поэтому typed
+  stream, как и typed run, нуждается в явной assertion boundary.
+- Пользователь добавил per-element assertion через `Stream.map`; LSP и `pnpm check-types` чистые. Изолированный smoke
+  test с fake Driver подтвердил: до `runFold` вызовов `executeStream` нет, после — один; переданы SQL
+  `SELECT * FROM "totals"`, `params = []`, `chunkSize = 17`; строки `2` и `3` дали `{ count: 2, sum: 5 }`. Результат
+  записан в [0025](records/0025-typed-stream-preserves-laziness.md). Следующий шаг — маленький сквозной сценарий на
+  реальном SQLite до миллионной нагрузки.
+- При написании SQLite-сценария пользователь задал `runFold` initial как число `0`, но reducer попытался вернуть
+  `{ sum, count }`. Объяснить единый accumulator type `Z`: initial и каждый результат reducer имеют одну форму; для двух
+  агрегатов initial должен быть `{ sum: 0, count: 0 }`, `sum` обновляется из `acc.sum`, `count` увеличивается на один.
+  Также подчеркнуть, что `runFold` возвращает Effect и внутри `Effect.gen` требует `yield*`.
+- Пользователь создал `src/query/typed-stream.test.ts` и спросил про raw multi-row INSERT. Текущий SQL перечисляет одну
+  target column `(amount)`, но один VALUES tuple с тремя выражениями, поэтому нарушает cardinality: для трёх строк нужны
+  три одноэлементных tuple. Также до прогона видны два независимых несоответствия: SQLite path должен быть `:memory:`, а
+  assertion ожидает поле `amount`, хотя fold возвращает поле `sum`.
+- Пользователь не увидел принципиальную разницу между `VALUES (?, ?, ?)` и `VALUES (?), (?), (?)`. Обнаруженный пробел —
+  SQL VALUES как матрица: выражения внутри одного tuple соответствуют столбцам одной строки, а отдельные tuple
+  соответствуют разным строкам. Закрепить прогнозом для двух столбцов и двух строк.
+- В проверке SQL VALUES пользователь правильно создал две tuple, но поместил внутрь имена столбцов `(amount, label)`
+  вместо значений строк. Следующий уровень подсказки: отделить единственный header `(amount, label)` после имени таблицы
+  от data tuples после VALUES и заполнить четыре конкретных значения.
+- Пользователь после подсказки правильно разделил две строки и два значения внутри каждой tuple; осталась только
+  синтаксическая опечатка — незакрытая кавычка у `'first'`. Концептуальная модель VALUES как матрицы подтверждена;
+  дальше применить её к трём одноэлементным строкам исходного INSERT и прогнать SQLite-тест.
+- Пользователь исправил multi-row INSERT, in-memory path и expected result. `pnpm test src/query/typed-stream.test.ts`
+  прошёл: 1 файл, 1 тест, 12 ms; LSP чистый. Сквозной путь через реальный SQLite вернул `{ count: 3, sum: 60 }`;
+  результат записан в [0026](records/0026-sqlite-stream-fold-end-to-end.md). Тест пока имеет пустое имя. Следующая
+  смысловая граница — подготовить миллион строк без массива JS, иначе setup загрязнит измерение heap.
+- Пользователь верно выбрал DB-side generation для миллионного setup: JS `Array.from` может удерживать миллион
+  row-объектов и в любом случае загрязняет heap/peak до scan. Нужна первая буквальная модель recursive CTE на диапазоне
+  1..5, затем масштабирование до 1_000_000; отдельно предупредить, что `:memory:` SQLite хранит сами DB pages в native
+  memory, поэтому heapUsed и RSS отвечают на разные вопросы.
+- Пользователь сообщил, что почти не знает БД и не понимает, как собрать recursive CTE INSERT. Снизить шаг: представить
+  CTE как временный именованный результат `seq(n)`, отдельно показать seed, recursive step и consumer INSERT; дать
+  неполный SQL с отверстиями только для table/column и сначала ограничить диапазон десятью строками. Не переходить к
+  миллиону и памяти до успешного малого запуска.
+- Пользователь сразу поставил recursive CTE limit `1_000_000`, но оставил старый oracle `{ count: 3, sum: 60 }`. Узкий
+  тест выполнил scan за 764 ms и вернул `{ count: 1_000_000, sum: 500_000_500_000 }`; failure только в stale assertion,
+  LSP чистый. Постоянный тест не должен держать миллион строк: он не отличает streaming от скрытого `executeRaw/all` и
+  добавляет ~0.8 s к suite. Вернуть малый N с точным oracle, дать тесту имя; миллион вынести в отдельный memory
+  experiment.
+- Пользователь вернул постоянный SQLite-тест к N=10, дал `it.effect` имя и обновил oracle `{ count: 10, sum: 55 }`.
+  Повторный узкий прогон прошёл: 1 файл, 1 тест, 15 ms; LSP чистый. `describe` пока остаётся общим `typed stream test`,
+  но контракт теста читаем. Следующий шаг — standalone `src/hw/e2-7.ts`: миллионный CTE и fold без Vitest, затем memory
+  protocol.
+- Standalone запуск через `pnpm exec tsx` дошёл до package import map и выбрал `default: ./dist/*`, поэтому
+  `#query/index.js` искался в отсутствующем `dist`. Проверенная команда для исходников:
+  `node --conditions=development --import tsx src/hw/e2-7.ts`; она выбирает `development: ./src/*`. После исправления
+  resolution проявился следующий точный дефект: CTE заканчивается после `)`, без statement-потребителя, поэтому SQLite
+  возвращает `incomplete input`. Нужно дописать `INSERT INTO ... SELECT n FROM seq`, вернуть fold result из program и
+  вывести resolved Promise.
+- Пользователь дописал CTE consumer, вернул fold result и запустил standalone с development condition. Наблюдение:
+  `{ sum: 500000500000, count: 1000000 }`, 1.11 s, LSP чистый; результат записан
+  в [0027](records/0027-million-row-stream-fold.md). Функциональная часть E2.7 завершена; остались heap snapshots и
+  честная интерпретация retained heap против native SQLite/RSS и peak.
+- Первый memory run вернул `after: { _id: 'Effect', op: 'Sync' }`: строка 69 сохраняет `takeMeasurement('after')` без
+  `yield*`, причём расположена до исполнения fold. LSP чистый, потому что неисполненный Effect является допустимым
+  значением объекта — это семантическая, не типовая ошибка. До исправления создан только
+  `/tmp/e2-7-before.heapsnapshot.` (~20.6 MB); trailing dot пришёл из filename template, after snapshot отсутствует.
+  Следующий шаг: result = yield* fold, затем after = yield* measurement, убрать trailing dot.
+- Исправленный memory run создал оба snapshot: before 20,564,647 B, after 20,636,032 B; LSP чистый. После forced GC
+  `heapUsed` снизился с 27,393,424 до 26,798,632 B (−594,792 B), `heapTotal` снизился на 5 MiB, `external` снизился на
+  1,061,976 B, `arrayBuffers` не изменился. Это свидетельство отсутствия миллиона удержанных JS row-объектов после fold.
+  RSS вырос на 99,368,960 B (~94.77 MiB), но его нельзя приписать scan: первая heap snapshot строится после before
+  memory sample и сама временно может удвоить heap; allocator может не вернуть страницы ОС. Финальная проверка
+  понимания — объяснить, почему heapUsed поддерживает вывод о retention, а RSS delta не доказывает leak или peak scan.
+- Пользователь не смог интерпретировать расхождение heapUsed↓ и RSS↑. Перейти к числовому контрпримеру: snapshot
+  временно запрашивает у ОС ~100 MiB, затем JS-объекты освобождаются, но allocator сохраняет страницы; heapUsed считает
+  живые V8 objects после forced GC, RSS — все принадлежащие процессу resident pages. Следующая проверка должна быть
+  бинарной: мог бы heapUsed остаться ~27 MiB после GC, если бы достижимый массив действительно удерживал миллион row
+  objects?
+- Пользователь правильно ответил на бинарный контрпример: forced GC не смог бы вернуть `heapUsed` к исходному уровню,
+  если бы достижимый массив удерживал миллион строк. Граница retained V8 heap против RSS подтверждена и записана
+  в [0028](records/0028-heap-retention-versus-rss.md). Обязательная часть E2.7 завершена: typed adapter, SQLite
+  integration test, миллионный fold, before/after snapshots и корректная интерпретация retention.
 
 ## Текущий запрос: инициализация маршрута урока 3
 
 - Пользователь переходит к уроку 3 курса — Phantom-typed Builder. Backend-код в рамках инициализации не менять.
 - E2.7 завершён и остаётся подтверждённой опорой; старая `MISSION.md` больше не должна направлять следующие занятия.
 - Созданы `curriculum.md`, `roadmap.md`, `progress.md`, `concepts.md`, `mistakes.md` и `session.md`.
-- Текущая точка — L3.0: разделить runtime `BuilderState`, type-only `SourceMap`/`R` и dependency `Driver`.
-- Первый implementation step после диагностики ограничен `Db.selectFrom(table, alias)` для одной таблицы. Не добавлять join, projection, execute или Repository тем же шагом.
-- Оценки mastery консервативны: type-state FSM, SourceMap, aliases/JOIN и LEFT JOIN nullability остаются `unknown`; phantom marker оценён в 2 до нового самостоятельного объяснения.
-- Полный маршрут строит ORM-пакет как продукт: read/write builder → Repository → transactions/Unit of Work → migrations → public package. Relations DSL, replicas и HTTP-приложение не входят в core без отдельной потребности.
+- Текущая точка — L3.0: разделить runtime `Builder`, type-only `SourceMap`/`R` и dependency `Driver`.
+- Первый implementation step после диагностики ограничен `Db.selectFrom(table, alias)` для одной таблицы. Не добавлять
+  join, projection, execute или Repository тем же шагом.
+- Оценки mastery консервативны: type-state FSM, SourceMap, aliases/JOIN и LEFT JOIN nullability остаются `unknown`;
+  phantom marker оценён в 2 до нового самостоятельного объяснения.
+- Полный маршрут строит ORM-пакет как продукт: read/write builder → Repository → transactions/Unit of Work →
+  migrations → public package. Relations DSL, replicas и HTTP-приложение не входят в core без отдельной потребности.
 
 ### L3.0 закрыт
 
-- Пользователь верно классифицировал `from.table`/`joins` (runtime), `keyof S`/`R` (type-only), `Driver` (Environment у `execute()`). `from.alias` сначала отнесён к чистому runtime; двойная жизнь alias установлена через widened-alias прогноз и записана в [0029](records/0029-l3-0-boundary-model-confirmed.md).
-- Изолированные зонды tsc: `{[K in string]: T}` имеет `keyof = string`; TS2693 при использовании generic как значения; `compile` принимает только IR, а `_codec`-функции в `ColumnDef` несовместимы со структурным ключом compile cache.
-- `progress.md` уже переведён на L3.1 (цепи FSM); `session.md` описывает старую границу L3.0→selectFrom и устарел. Следующий шаг — допустимые/недопустимые цепочки FSM и compile-only поверхности двух классов.
-- Phantom marker после нового самостоятельного объяснения (двойная жизнь alias) можно переоценить с 2 на 3 при первом подтверждении в коде билдера.
+- Пользователь верно классифицировал `from.table`/`joins` (runtime), `keyof S`/`R` (type-only), `Driver` (Environment у
+  `execute()`). `from.alias` сначала отнесён к чистому runtime; двойная жизнь alias установлена через widened-alias
+  прогноз и записана в [0029](records/0029-l3-0-boundary-model-confirmed.md).
+- Изолированные зонды tsc: `{[K in string]: T}` имеет `keyof = string`; TS2693 при использовании generic как значения;
+  `compile` принимает только IR, а `_codec`-функции в `ColumnDef` несовместимы со структурным ключом compile cache.
+- `progress.md` уже переведён на L3.1 (цепи FSM); `session.md` описывает старую границу L3.0→selectFrom и устарел.
+  Следующий шаг — допустимые/недопустимые цепочки FSM и compile-only поверхности двух классов.
+- Phantom marker после нового самостоятельного объяснения (двойная жизнь alias) можно переоценить с 2 на 3 при первом
+  подтверждении в коде билдера.
+
+### L3.5: фабрика подтверждена, требуется восстановление общей модели
+
+- Пользователь самостоятельно добавил статическую границу создания и `selectFrom`. `pnpm check-types` прошёл; runtime
+  smoke вернул `from: { table: "users", alias: "u" }`, пустые `joins` и `orderBy`.
+- Пользователь сообщил, что знает ссылочную семантику JavaScript, но начал терять сквозную нить урока. Не повторять
+  shallow/deep copy изолированно. Перед следующим изменением восстановить связь schema value, generic `SourceMap` и
+  runtime `BuilderState` на текущем `selectFrom`.
+- После восстановления модели пользователь правильно связал runtime alias с SQL и literal alias с ограничением
+  колонок. Пользователь также сформулировал инвариант: общие ссылки допустимы при запрете мутации, а `readonly` не
+  обеспечивает runtime enforcement. Runtime-зонд подтвердил независимые ветки `limit = 10` и `limit = 20`; L3.5
+  закрыт, следующий шаг — L3.6.
+
+### L3.6: callback и накопление условий
+
+- Пользователь не понимал передачу callback в `where`. Разобраны отдельно создание функции, вызов с
+  `ExpressionBuilder<S>` и возвращаемый AST. После разбора пользователь верно предсказал объект условия для
+  `eb.bool(false)`, затем реализовал `where` с помощью.
+- Runtime-зонд подтвердил SQL и params первого, повторного и соседнего `where`; проверка типов остановилась на
+  опечатке `_ыcolumns` в `src/hw/e3-1.ts:45`. Следующая задача ограничена исправлением опечатки.
+- После исправления опечатки `pnpm check-types` прошёл. L3.6 завершён; следующая реализация — только `orderBy`.
+
+### L3.7: независимые modifiers подтверждены
+
+- Пользователь реализовал `orderBy` с помощью. Runtime-проверка подтвердила дополнение массива, порядок критериев и
+  независимость веток. После удаления неиспользуемого импорта узкий lint прошёл.
+- Пользователь правильно предсказал `limit = 3`, `offset = 0` для дочерней ветки и объяснил замену полей. Уточнено:
+  object spread, а не destructuring; поле заменяется в новом объекте, исходный `state` не мутируется.
+- Проверены повторные `limit` и `offset`, включая нулевые значения, сохранность исходного builder, `where`, `orderBy`
+  и params. L3.7 завершён; следующая граница — `InferSelection` отдельно от класса.
+
+### L3.8: проверка завершена без дополнительной пользовательской правки
+
+- Пользователь попросил не задерживаться на доработке учебных type cases. Менторство остаётся активным; это не
+  разрешение писать backend за пользователя. Не превращать каждую механическую доработку примера в отдельный цикл.
+- Агент проверил `RowFromSelection` через API установленного TypeScript 7 с виртуальным содержимым файла:
+  точный тип строки, допустимость string/null и изолированный запрет string в `active` подтверждены. Файлы не
+  записывались. L3.8 завершён, следующий шаг — `.select(callback)` и runtime projection.

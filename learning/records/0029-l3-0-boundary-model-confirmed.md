@@ -1,4 +1,4 @@
-# 0029 — L3.0: граница runtime BuilderState ↔ type-only SourceMap подтверждена
+# 0029 — L3.0: граница runtime Builder ↔ type-only SourceMap подтверждена
 
 ## Контекст
 
