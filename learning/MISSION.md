@@ -30,12 +30,10 @@ I/O. Практическая проблема текущего кода: single
 
 ## Current step
 
-L3.5 из [roadmap](roadmap.md): ввести immutable `Builder`, который хранит runtime query shape отдельно от type-only
-`SourceMap`. Каждый modifier должен возвращать новый builder и не менять общий prefix или sibling branch.
+Упражнение E3.1 курса, оно же L3.13 из [roadmap](roadmap.md): `selectAll()` разрешён только при единственном источнике.
 
-## Out of scope
+`innerJoin` и `leftJoin` реализованы и проверены на SQLite. Открытый долг — тип результата после `leftJoin` ещё не
+выражает `null` ([запись 0038](records/0038-l3-left-join-runtime-null.md)); это упражнение E3.2 курса.
 
-- Полная реализация урока 3 одним большим изменением.
-- Repository/Identity Map/Unit of Work до появления законченного read/write builder.
-- Aggregations, relations DSL и DbService без практической потребности.
-- HTTP API, authentication и отдельное приложение-потребитель.
+`innerJoin` реализован и проверен: SourceMap растёт через пересечение, `on` видит обе стороны, IR содержит один `Join`,
+SQL и строки на SQLite совпадают с ожидаемыми. Подробности в [записи 0036](records/0036-l3-14-inner-join-source-extension.md).

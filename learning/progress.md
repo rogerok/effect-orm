@@ -18,44 +18,34 @@
 
 ## Текущая задача
 
-L3.10: отделить `ExecutableQuery<R>` с `toIR()` от `SelectQueryBuilder<S>`.
+**Упражнение E3.1 курса, оно же L3.13: `selectAll()` только для запроса без join.**
 
-L3.9 завершён: `select` проверен по runtime SQL, params и точному типу результата. Пользователь объяснил, что
-`{ id: eb.col('u', 'name') }` даёт `SELECT u.name AS id` и поле `id: string`.
+Закрытые шаги урока 3 и записи с подробностями:
 
-L3.8 завершён: `RowFromSelection` реализован с помощью. Отдельный зонд TypeScript 7 без записи файлов подтвердил
-точный тип результата, допустимость string/null и запрет строки в `active`. Пользователь отказался от доработки
-учебных примеров; проверка выполнена агентом, уровень самостоятельности не повышен.
+| шаг                 | результат                                                                | запись                                                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| L3.0–L3.9           | границы пайплайна, FSM, SourceMap, `col`, immutable state, projection    | [0029](records/0029-l3-0-boundary-model-confirmed.md), [0030](records/0030-l3-fsm-sourcemap-contextual-col.md), [0031](records/0031-l3-5-immutable-builder-state.md) |
+| L3.10–L3.11         | `ExecutableQuery<R>`, `execute()` через typed `run`                      | [0032](records/0032-l3-10-executable-query-boundary.md), [0033](records/0033-l3-11-execute-delegates-to-typed-run.md)                                                |
+| L3.12               | три cardinality terminals и тесты с мутационной проверкой                | [0034](records/0034-l3-12-cardinality-terminals.md), [0035](records/0035-l3-12-terminals-test-and-mutation-check.md)                                                 |
+| L3.14, L3.16, L3.17 | `innerJoin`: рост SourceMap, ON в расширенном контексте, JoinIR          | [0036](records/0036-l3-14-inner-join-source-extension.md)                                                                                                            |
+| L3.15               | политика повторного alias — документация вместо запрета                  | [0037](records/0037-l3-15-duplicate-alias-policy.md)                                                                                                                 |
+| —                   | `leftJoin` написан пользователем вне очереди; тип ещё не выражает `null` | [0038](records/0038-l3-left-join-runtime-null.md)                                                                                                                    |
 
-L3.7 завершён: `orderBy` дополняет список; повторные `limit` и `offset` заменяют значения, включая ноль.
-Runtime-проверки compiled SQL и params подтвердили независимость веток и сохранность остальных полей.
-`pnpm check-types` прошёл; после удаления неиспользуемого импорта узкий lint прошёл без предупреждений.
+Пропущены и остаются долгом: L3.18 (две колонки `id` под разными ключами результата) и L3.19 (второй join). Тестов на
+join в репозитории нет.
 
 ## Что уже реализовано
 
-- Schema values и inference для row/insert/update.
-- Tagged Driver errors.
-- Dialects PostgreSQL/SQLite.
-- Drivers для PGlite, better-sqlite3 и libSQL; streaming реально реализован только для PGlite и better-sqlite3.
-- Runtime AST/IR, smart constructors, compiler, pretty printer и predicate optimizer.
-- Typed expressions/statements и typed `run`.
-- Compile cache experiment.
-- Effect Request one-to-many batching exercise.
-- Typed Stream adapter, SQLite integration test и миллионный streaming experiment.
-- Cross-cutting Driver layers: tracing, metrics, retry, timeout/slow-query behavior.
-- Compile-only FSM из `SelectQueryBuilder<S>` и `ExecutableQuery<R>` с positive/negative method-availability cases.
-- Single-source `SourceMap`: `selectFrom(users, 'u')` сохраняет `{ u: typeof users }`, неизвестные alias/column
-  запрещены.
-- Contextual `ExpressionBuilder.col`: точные `Expr<number>`/`Expr<string>`, negative alias/column cases и runtime
-  `Column` IR без assertions.
-- `ExpressionBuilder` facade переиспользует existing `lit`/predicates; type contracts, incompatible `eq` и runtime
-  structural equality подтверждены.
-- Начальная фабрика `selectFrom` создаёт runtime `BuilderState` без `SourceMap`; persistent `limit` сохраняет исходный
-  builder и независимость двух веток.
-- `where(callback)` вызывает функцию с `ExpressionBuilder<S>`, сохраняет первый predicate и объединяет последующие
-  через `And`. SQL, params и независимость веток подтверждены; модель callback разобрана с помощью.
-- `orderBy` сохраняет приоритет критериев при повторных вызовах; `limit` и `offset` заменяют только собственные поля.
-  Проверены `LIMIT 0`, `OFFSET 0` и сохранность общего prefix.
+До урока 3: schema values и inference, tagged Driver errors, диалекты PostgreSQL/SQLite, драйверы PGlite,
+better-sqlite3 и libSQL, runtime AST/IR со smart constructors, компилятор, pretty printer и predicate optimizer, typed
+expressions/statements и typed `run`, compile cache, Request batching, typed Stream, cross-cutting Driver layers
+(tracing, metrics, retry, timeout). Streaming реально работает только в PGlite и better-sqlite3.
+
+Builder урока 3: `selectFrom(table, alias)` создаёт immutable `SelectQueryBuilder<S>` с runtime `BuilderState` и
+type-only `SourceMap`; `where` накапливает предикаты через `And`, `orderBy` дополняет список критериев, `limit` и
+`offset` заменяют собственные поля; `innerJoin` и `leftJoin` расширяют `SourceMap` пересечением и добавляют один `Join`
+в IR; `select(callback)` переводит запрос в `ExecutableQuery<R>` с `toIR()`, `execute()`, `executeOne()` и
+`executeOneOrThrow()`. Контракты terminals покрыты `src/query/builder.test.ts`.
 
 ## Известные технологии
 
@@ -70,34 +60,38 @@ Runtime-проверки compiled SQL и params подтвердили неза�
 
 ## Оценка mastery
 
-| Концепция                                      | Уровень | Основание                                                                                                              |
-| ---------------------------------------------- | ------: | ---------------------------------------------------------------------------------------------------------------------- |
-| Strict TypeScript: generics, unions, narrowing |       3 | Пользователь реализовывал typed AST/optimizer и исправлял type errors с помощью.                                       |
-| Conditional и mapped types                     |       3 | Пользователь реализовал single-source mapped type с literal alias и negative cases с помощью.                          |
-| Phantom marker / type erasure                  |       2 | Граница `_tag` против marker разбиралась; отдельного подтверждённого результата в records нет.                         |
-| Runtime AST и discriminated unions             |       3 | Подтверждены чтение вложенного дерева и реализация optimizer rules.                                                    |
-| Pure compiler `AST + Dialect → SQL + params`   |       3 | Compiler и расширения проверялись с помощью; самостоятельное восстановление целого pipeline ещё нужно проверить.       |
-| SQL parameterization и identifier quoting      |       2 | Используется во многих заданиях; системное объяснение threat boundary не зафиксировано.                                |
-| Базовый SQL DDL/DML                            |       1 | Пользователь явно сообщал, что почти не знает БД; VALUES/recursive CTE освоены локально.                               |
-| SQL JOIN и aliases                             | unknown | IR/compiler содержат join, но самостоятельная семантика и типизация join не проверены.                                 |
-| Effect lazy execution и `yield*`               |       3 | Подтверждена execution boundary; забытый `yield*` был найден через runtime observation.                                |
-| Effect services/Layers и dependency channel    |       3 | Driver context и `provideContext` применялись с помощью в E2.6.                                                        |
-| Typed errors и `catchTag`                      |       2 | Ошибки и tests существуют; проектирование нового cardinality contract ещё не проверено.                                |
-| Scope/Fiber/resource lifetime                  |       2 | Интерактивный материал пройден, но объяснение пользователя не подтверждено record.                                     |
-| Effect Request batching                        |       3 | Реализован и проверен one-to-many resolver с одним SQL batch.                                                          |
-| Effect Stream/backpressure                     |       3 | Typed adapter и миллионный fold реализованы с помощью; producer/consumer boundary объяснена.                           |
-| Memory retention: heapUsed/RSS                 |       3 | Пользователь правильно объяснил forced-GC контрпример; record 0028.                                                    |
-| Behavioral testing                             |       3 | Пользователь писал integration/acceptance tests, но первоначально не проверил SQL/params в DataLoader test.            |
-| Type-level API testing                         |       3 | Compile-only positive/negative FSM cases подтверждены через `@ts-expect-error` и `pnpm check-types`.                   |
-| Fluent immutable builder                       |       3 | Пользователь реализовал фабрику и modifier с помощью; initial state и независимость веток подтверждены runtime-зондом. |
-| Type-state FSM через class surfaces            |       3 | Пользователь классифицировал переходы и реализовал compile-only поверхности двух состояний с помощью.                  |
-| SourceMap через intersection types             | unknown | Single-source mapped type подтверждён; монотонный рост через intersection ещё не реализован.                           |
-| LEFT JOIN nullability                          | unknown | Не реализована и не проверена.                                                                                         |
-| Repository / Data Mapper boundary              |       1 | Термины присутствуют только в курсе; проект ещё не создаёт domain entities.                                            |
-| Transactions/savepoints                        | unknown | Реализации и подтверждённой практики нет.                                                                              |
-| Identity Map / Unit of Work                    |       0 | В текущем коде отсутствуют.                                                                                            |
-| Migrations                                     |       0 | В текущем коде отсутствуют.                                                                                            |
-| Public package design/build consumption        |       1 | package metadata есть, но `src/index.ts` отсутствует при export на `dist/index.*`.                                     |
+| Концепция                                      | Уровень | Основание                                                                                                                              |
+| ---------------------------------------------- | ------: | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Strict TypeScript: generics, unions, narrowing |       3 | Пользователь реализовывал typed AST/optimizer и исправлял type errors с помощью.                                                       |
+| Conditional и mapped types                     |       3 | Пользователь реализовал single-source mapped type с literal alias и negative cases с помощью.                                          |
+| Phantom marker / type erasure                  |       3 | Пользователь объяснил, что `R` не участвует в разрешении методов, и реализовал `ExecutableQuery<R>`; запись 0032.                      |
+| Runtime AST и discriminated unions             |       3 | Подтверждены чтение вложенного дерева и реализация optimizer rules.                                                                    |
+| Pure compiler `AST + Dialect → SQL + params`   |       3 | Compiler и расширения проверялись с помощью; самостоятельное восстановление целого pipeline ещё нужно проверить.                       |
+| SQL parameterization и identifier quoting      |       2 | Используется во многих заданиях; системное объяснение threat boundary не зафиксировано.                                                |
+| Базовый SQL DDL/DML                            |       1 | Пользователь явно сообщал, что почти не знает БД; VALUES/recursive CTE освоены локально.                                               |
+| SQL JOIN и aliases                             |       2 | Прогноз на изменённых данных совпал с наблюдением; оба следствия названы без подсказки, запись 0036.                                   |
+| Effect lazy execution и `yield*`               |       3 | Пользователь уточнил границу: `execute()` не читает `Driver`, требование объявлено в типе; запись 0033.                                |
+| Effect services/Layers и dependency channel    |       3 | Driver context и `provideContext` применялись с помощью в E2.6.                                                                        |
+| Typed errors и `catchTag`                      |       3 | Пользователь реализовал три cardinality contract с ошибками в error channel; канал успеха путался, запись 0034.                        |
+| Scope/Fiber/resource lifetime                  |       2 | Интерактивный материал пройден, но объяснение пользователя не подтверждено record.                                                     |
+| Effect Request batching                        |       3 | Реализован и проверен one-to-many resolver с одним SQL batch.                                                                          |
+| Effect Stream/backpressure                     |       3 | Typed adapter и миллионный fold реализованы с помощью; producer/consumer boundary объяснена.                                           |
+| Memory retention: heapUsed/RSS                 |       3 | Пользователь правильно объяснил forced-GC контрпример; record 0028.                                                                    |
+| Behavioral testing                             |       3 | Написал семь случаев контрактов с fake Driver; состав утверждений и связь calls/строк потребовали разбора.                             |
+| Type-level API testing                         |       3 | Compile-only positive/negative FSM cases подтверждены через `@ts-expect-error` и `pnpm check-types`.                                   |
+| Мутационная проверка тестов                    |       2 | Метод показан агентом: зелёный набор пропускал неверный `count`, пока код не сломали намеренно.                                        |
+| Сужение типа и `noUncheckedIndexedAccess`      |       2 | Проверка длины не сужает элемент; объяснено на изолированном примере, самостоятельно не восстановлено.                                 |
+| Непроверенные приведения как источник дефектов |       2 | Форма результата ломалась трижды при молчащем `tsc`; сужение приведения до одного значения показано агентом.                           |
+| Fluent immutable builder                       |       3 | Пользователь реализовал фабрику и modifier с помощью; initial state и независимость веток подтверждены временным проверочным скриптом. |
+| Type-state FSM через class surfaces            |       3 | Пользователь перенёс FSM из compile-only упражнения в runtime API и объяснил причину запрета; запись 0032.                             |
+| `exactOptionalPropertyTypes` и сборка объекта  |       2 | Правка выполнена после объяснения на literal-примере; самостоятельное объяснение не подтверждено.                                      |
+| SourceMap через intersection types             |       3 | `innerJoin` реализован по списку ограничений; расширение alias и два negative type case подтверждены, запись 0036.                     |
+| LEFT JOIN nullability                          |       1 | `leftJoin` написан и даёт верный SQL; тип результата ещё обещает `string` там, где приходит `null`, запись 0038.                       |
+| Repository / Data Mapper boundary              |       1 | Термины присутствуют только в курсе; проект ещё не создаёт domain entities.                                                            |
+| Transactions/savepoints                        | unknown | Реализации и подтверждённой практики нет.                                                                                              |
+| Identity Map / Unit of Work                    |       0 | В текущем коде отсутствуют.                                                                                                            |
+| Migrations                                     |       0 | В текущем коде отсутствуют.                                                                                                            |
+| Public package design/build consumption        |       1 | package metadata есть, но `src/index.ts` отсутствует при export на `dist/index.*`.                                                     |
 
 ## Концепции, которые считаются знакомыми, но требуют retrieval check
 
@@ -112,10 +106,7 @@ Runtime-проверки compiled SQL и params подтвердили неза�
 
 ## Непроверенные концепции урока 3
 
-- два класса как states FSM;
-- method availability как compile-time transition;
 - сохранение alias literal без widening;
-- SourceMap и его рост через intersection;
 - indexed access `S[A]['_columns'][C]`;
 - projection inference `Expr<T> → T`;
 - alias collisions;
@@ -124,13 +115,14 @@ Runtime-проверки compiled SQL и params подтвердили неза�
 
 ## Ближайшая учебная цель
 
-Перенести границу FSM из compile-only упражнения в runtime API:
+Разрешить `selectAll()` только там, где форма результата однозначна (E3.1 / L3.13):
 
 ```text
-SelectQueryBuilder<S> → select → ExecutableQuery<R> → toIR → Select<R>
+до join   → строка по TableDef единственного источника
+после join → вызов не компилируется
 ```
 
-После `select` доступны операции законченного запроса, а не modifiers builder; execution подключается в L3.11.
+Ограничение выражается типом получателя метода, а не проверкой во время исполнения.
 
 ## Текущие риски проекта, не являющиеся оценкой пользователя
 
@@ -139,4 +131,5 @@ SelectQueryBuilder<S> → select → ExecutableQuery<R> → toIR → Select<R>
 - `typed-run` и typed stream используют unchecked raw-row assertion; runtime schema validation отсутствует.
 - Cross-cutting layers в текущем виде просто пробрасывают `executeStream`, поэтому tracing/metrics/retry behavior
   потоковых запросов не эквивалентен `executeRaw`.
-- Builder уже возвращает публичный typed `Select<R>`; `ExecutableQuery` и execution pipeline ещё не подключены.
+- Смысл поля `count` в `TooManyError` не зафиксирован ни в типе, ни в документации.
+- Граница FSM не защищена тестами в репозитории: `src/hw/e3-2.ts` содержит вызов без утверждений.

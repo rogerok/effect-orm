@@ -9,15 +9,16 @@
 - [Справочники](../references/) открываются после самостоятельной попытки.
 - Этот каталог фиксирует только подтверждённые результаты и связывает их с соответствующими уроками.
 
+Записи 0001, 0004, 0022 и 0024 удалены при аудите 2026-09-08: они фиксировали только смену цели или были явно помечены
+как superseded. Номера не переиспользуются; удалённые файлы доступны в истории git.
+
 ## Хронология
 
 ### Миссия и базовые границы
 
-1. [0001 — миссия сменилась с Pool на Free/AST](0001-mission-shift-free-ast.md)
 2. [0002 — расширение AST требует двух видов проверки](0002-ast-extension-boundaries.md)
 3. [0003 — Effect описывает исполнение, а не запускает его](0003-effect-execution-boundary.md)
-4. [0004 — базовая диагностика разделов 2.1–2.5](0004-free-ast-baseline-complete.md)
-5. [0005 — исходная точка: фронтенд без опыта с компиляторами и ORM](0005-frontend-background-first-ast.md)
+4. [0005 — исходная точка: фронтенд без опыта с компиляторами и ORM](0005-frontend-background-first-ast.md)
 
 Связанный маршрут: [урок 0004](../lessons/0004-free-ast-query-boundaries.html) → [урок 0005](../lessons/0005-rebuild-minimal-query-pipeline.html).
 
@@ -49,14 +50,12 @@
 
 ### E2.6: Request batching
 
-22. [0022 — миссия перешла к E2.6 DataLoader](0022-mission-shift-e2-6-dataloader.md): следующая цель — один SQL-батч и отдельный массив постов для каждого `userId`; понимание механизма пока не подтверждено.
 23. [0023 — one-to-many batch раздаёт отдельные массивы](0023-one-to-many-batch-distribution.md): реализация создаёт и дополняет группы, возвращает `[]` для отсутствующей группы и прошла сквозную проверку одного SQL на три request.
 
 Связанный материал: [урок 0011 — один SQL, много массивов постов](../lessons/0011-one-batch-many-post-lists.html) и [памятка Effect Request один-ко-многим](../references/effect-request-one-to-many.html).
 
 ### E2.7: потоковый full table scan
 
-24. [0024 — миссия перешла к E2.7 Stream](0024-mission-shift-e2-7-streaming.md): следующая цель — typed stream, fold миллиона строк и корректная проверка памяти; понимание механизма пока не подтверждено.
 25. [0025 — typed stream сохраняет ленивость](0025-typed-stream-preserves-laziness.md): Driver извлекается при terminal operation, raw stream адаптируется к `R`, а fake Driver подтверждает один вызов и постоянный fold-аккумулятор.
 26. [0026 — SQLite stream работает сквозным проходом](0026-sqlite-stream-fold-end-to-end.md): реальный `stmt.iterate()` передал три строки в `runFold`, который вернул точные count и sum.
 27. [0027 — миллион строк свёрнут через Stream](0027-million-row-stream-fold.md): standalone SQLite scan вернул точные count и sum без массива результатов.
@@ -70,12 +69,26 @@
 30. [0030 — FSM, single-source SourceMap и contextual col подтверждены](0030-l3-fsm-sourcemap-contextual-col.md): два состояния запрещают неверный порядок методов, literal alias сохраняет конкретный `TableDef`, а `col` связывает alias/column с точным `Expr<T>` и обычным runtime IR.
 31. [0031 — immutable Builder разделяет runtime и type-only state](0031-l3-5-immutable-builder-state.md): `selectFrom` создаёт начальный runtime state без `SourceMap`, modifier сохраняет общий prefix, а structural sharing остаётся безопасным только при запрете мутации.
 
+32. [0032 — `ExecutableQuery<R>` переносит границу FSM в runtime API](0032-l3-10-executable-query-boundary.md): множество методов класса запрещает модификаторы после `select`, `R` отвечает только за тип результата, а способ сборки объекта решает, создаётся ли ключ со значением `undefined`.
+
+33. [0033 — `execute()` делегирует существующему typed `run`](0033-l3-11-execute-delegates-to-typed-run.md): вызов `execute()` не обращается к `Driver`, требование объявлено в третьем параметре `Effect`, а подсказка `unnecessaryEffectGen` требует удалить обёртку, а не заменить её другой.
+
+34. [0034 — cardinality terminals и цена непроверенного приведения типа](0034-l3-12-cardinality-terminals.md): три контракта количества строк разведены, `sql` для ошибок приходит из `runWithSql`, а `as unknown as` на всём объекте трижды скрыл ошибку формы результата.
+
+35. [0035 — тесты трёх terminals и мутационная проверка](0035-l3-12-terminals-test-and-mutation-check.md): семь случаев на фейковом драйвере без реальной базы; зелёный набор пропускал неверный `count`, пока мутация это не показала.
+
+36. [0036 — `innerJoin` расширяет SourceMap и создаёт JoinIR](0036-l3-14-inner-join-source-extension.md): пересечение типов добавляет alias, `on` видит обе стороны, physical table и alias лежат в разных полях IR, а исходный builder остаётся односточниковым.
+
+37. [0037 — политика повторного alias](0037-l3-15-duplicate-alias-policy.md): пересечение с занятым ключом компилируется молча, а SQL отклоняется во время исполнения по-разному в PostgreSQL и SQLite; выбрана документация вместо запрета.
+
+38. [0038 — `leftJoin` и `null` вместо обещанного `string`](0038-l3-left-join-runtime-null.md): LEFT JOIN сохраняет несовпавшую левую строку и заполняет правые колонки `null`, тогда как тип результата этого ещё не выражает.
+
 ## Опорные справочники
 
 - [AST — дерево обычных объектов](../references/ast-tree-basics.html) — записи 0005–0007.
 - [Проход optimizer для Predicate AST](../references/optimizer-pass.html) — записи 0008–0015.
 - [Инварианты оптимизатора Predicate](../references/0001-predicate-optimizer-invariants.html) — проверочная матрица E2.3.
-- [Free/AST-пайплайн запросов](../references/free-ast-query-pipeline.html) — записи 0001–0004.
+- [Free/AST-пайплайн запросов](../references/free-ast-query-pipeline.html) — записи 0002–0005.
 - [Время жизни Effect.cached](../references/cached-effect-lifetime.html) — опора к уроку 0010.
 - [Effect Request один-ко-многим](../references/effect-request-one-to-many.html) — контракт request, группировка строк и completion каждого entry для E2.6.
 - [Потоковый full table scan](../references/streaming-full-table-scan.html) — producer, typed adapter, fold и границы memory measurement для E2.7.

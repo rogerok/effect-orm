@@ -1,19 +1,93 @@
-import type { Join, OrderBy, Predicate } from '#compiler/ir.js';
+import type { Option } from 'effect';
+
+import { Array, Effect } from 'effect';
+
+import type {
+  Join as JoinIR,
+  OrderBy as OrderByIR,
+  Predicate as PredIR,
+  SelectIR,
+} from '#compiler/ir.js';
+import type { Driver } from '#drivers/driver.js';
 import type {
   ExpressionBuilder,
   SourceMap,
 } from '#query/expression-builder.js';
-import type { Expr, RowFromSelection, Select } from '#query/typed-ast.js';
+import type { Expr, Pred, RowFromSelection, Select } from '#query/typed-ast.js';
+import type { ColumnDef, SqlType } from '#schema/columns.js';
+import type { TableDef } from '#schema/table.js';
 
+import {
+  type DriverError,
+  NotFoundError,
+  TooManyError,
+} from '#errors/errors.js';
 import { makeExpressionBuilder } from '#query/expression-builder.js';
+import { run, runWithSql } from '#query/typed-run.js';
+
+type ExecutableState = { readonly columns: SelectIR['columns'] } & BuilderState;
+
+/*
+Использую run, runWithsql т.к. данный функционал уже заменяет вызов драйвера
+      const driver = yield* Driver;
+      const { sql, params } = compile(ir, driver.dialect);
+      const raw = yield* driver.executeRaw(sql, params);
+
+      Также использую Option на тот случай, если элемент массива === undefined
+ */
+
+export class ExecutableQuery<R> {
+  constructor(private readonly state: ExecutableState) {}
+
+  toIR(): Select<R> {
+    return {
+      _tag: 'Select',
+      ...this.state,
+    };
+  }
+
+  execute(): Effect.Effect<ReadonlyArray<R>, DriverError, Driver> {
+    const ir = this.toIR();
+
+    return run(ir);
+  }
+
+  executeOne(): Effect.Effect<Option.Option<R>, DriverError, Driver> {
+    const ir = this.toIR();
+
+    return run(ir).pipe(Effect.map(Array.head));
+  }
+
+  executeOneOrThrow(): Effect.Effect<
+    R,
+    DriverError | NotFoundError | TooManyError,
+    Driver
+  > {
+    const ir = this.toIR();
+
+    return Effect.gen(function* () {
+      const { sql, result } = yield* runWithSql(ir);
+
+      if (result[0] === undefined) {
+        return yield* new NotFoundError({ sql });
+      }
+
+      if (result.length > 1) {
+        return yield* new TooManyError({ sql, count: result.length });
+      }
+
+      return result[0];
+    });
+  }
+}
 
 interface BuilderState {
   readonly from: { readonly alias: string; readonly table: string };
-  readonly joins: ReadonlyArray<Join>;
-  readonly orderBy: ReadonlyArray<OrderBy>;
+  readonly joins: ReadonlyArray<JoinIR>;
+  readonly orderBy: ReadonlyArray<OrderByIR>;
   readonly limit?: number;
   readonly offset?: number;
-  readonly where?: Predicate;
+  readonly where?: PredIR;
 }
 
 export class SelectQueryBuilder<S extends SourceMap> {
@@ -25,6 +99,65 @@ export class SelectQueryBuilder<S extends SourceMap> {
     return new SelectQueryBuilder<S>(state);
   }
 
+  /**
+   * Добавляет INNER JOIN и регистрирует `alias` как новый источник SourceMap.
+   *
+   * Alias обязан быть уникален в пределах запроса. Повторный alias компилятором
+   * не отклоняется: пересечение `{ [K in A]: T } & S` объединяет колонки обеих
+   * таблиц под одним ключом, поэтому `col` начинает принимать колонки, которых
+   * у источника под этим alias нет.
+   *
+   * Такой запрос отклоняется во время исполнения, и текст ошибки зависит от
+   * базы данных. PostgreSQL отвергает сам FROM: `table name "u" specified more
+   * than once`. SQLite отвергает первую ссылку на колонку через занятый alias:
+   * `ambiguous column name: u.id`.
+   */
+  innerJoin<
+    T extends TableDef<
+      string,
+      Record<string, ColumnDef<SqlType, boolean, boolean>>
+    >,
+    A extends string,
+  >(
+    table: T,
+    alias: A,
+    on: (b: ExpressionBuilder<{ [K in A]: T } & S>) => Pred,
+  ): SelectQueryBuilder<{ [K in A]: T } & S> {
+    const eb = makeExpressionBuilder<{ [K in A]: T } & S>();
+    const onPred = on(eb);
+
+    return new SelectQueryBuilder<{ [K in A]: T } & S>({
+      ...this.state,
+      joins: [
+        ...this.state.joins,
+        { kind: 'inner', table: table._name, alias, on: onPred },
+      ],
+    });
+  }
+
+  leftJoin<
+    T extends TableDef<
+      string,
+      Record<string, ColumnDef<SqlType, boolean, boolean>>
+    >,
+    A extends string,
+  >(
+    table: T,
+    alias: A,
+    on: (b: ExpressionBuilder<{ [K in A]: T } & S>) => Pred,
+  ): SelectQueryBuilder<{ [K in A]: T } & S> {
+    const eb = makeExpressionBuilder<{ [K in A]: T } & S>();
+    const onPred = on(eb);
+
+    return new SelectQueryBuilder<{ [K in A]: T } & S>({
+      ...this.state,
+      joins: [
+        ...this.state.joins,
+        { kind: 'left', table: table._name, alias, on: onPred },
+      ],
+    });
+  }
+
   limit(n: number): SelectQueryBuilder<S> {
     return new SelectQueryBuilder<S>({ ...this.state, limit: n });
   }
@@ -33,7 +166,7 @@ export class SelectQueryBuilder<S extends SourceMap> {
     return new SelectQueryBuilder<S>({ ...this.state, offset: n });
   }
 
-  where(pred: (b: ExpressionBuilder<S>) => Predicate): SelectQueryBuilder<S> {
+  where(pred: (b: ExpressionBuilder<S>) => Pred): SelectQueryBuilder<S> {
     const eb = makeExpressionBuilder<S>();
     const newPred = pred(eb);
     return new SelectQueryBuilder<S>({
@@ -45,7 +178,10 @@ export class SelectQueryBuilder<S extends SourceMap> {
   }
 
   orderBy(
-    fn: (b: ExpressionBuilder<S>) => ReadonlyArray<OrderBy>,
+    fn: (b: ExpressionBuilder<S>) => ReadonlyArray<{
+      readonly dir: 'asc' | 'desc';
+      readonly expr: Expr<unknown>;
+    }>,
   ): SelectQueryBuilder<S> {
     const eb = makeExpressionBuilder<S>();
     return new SelectQueryBuilder<S>({
@@ -56,7 +192,7 @@ export class SelectQueryBuilder<S extends SourceMap> {
 
   select<Sel extends Record<string, Expr<unknown>>>(
     selection: (b: ExpressionBuilder<S>) => Sel,
-  ): Select<RowFromSelection<Sel>> {
+  ): ExecutableQuery<RowFromSelection<Sel>> {
     const eb = makeExpressionBuilder<S>();
     const sel = selection(eb);
     const columns = Object.entries(sel).map(([alias, expr]) => ({
@@ -64,7 +200,7 @@ export class SelectQueryBuilder<S extends SourceMap> {
       alias,
     }));
 
-    return { ...this.state, columns, _tag: 'Select' };
+    return new ExecutableQuery({ ...this.state, columns });
   }
 }
 

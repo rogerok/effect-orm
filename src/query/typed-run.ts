@@ -32,9 +32,14 @@ type StatementResult<S> =
             : ReadonlyArray<R>
           : never;
 
-export const run = <S extends Statement<unknown>>(
+interface RunResult<S> {
+  readonly result: StatementResult<S>;
+  readonly sql: string;
+}
+
+export const runWithSql = <S extends Statement<unknown>>(
   stmt: S,
-): Effect.Effect<StatementResult<S>, DriverError, Driver> =>
+): Effect.Effect<RunResult<S>, DriverError, Driver> =>
   Effect.gen(function* () {
     const driver = yield* Driver;
     const { sql, params } = compile(stmt, driver.dialect);
@@ -43,14 +48,16 @@ export const run = <S extends Statement<unknown>>(
 
     const hasReturning =
       stmt._tag === 'Select' ||
-      // (stmt._tag !== 'Select' &&
       (stmt as DeleteIR | InsertIR | UpdateIR).returning !== null;
 
-    // );
+    const result = (
+      hasReturning ? raw.rows : { affectedRows: raw.affectedRows }
+    ) as StatementResult<S>;
 
-    if (hasReturning) {
-      return raw.rows as unknown as StatementResult<S>;
-    }
-
-    return { affectedRows: raw.affectedRows } as unknown as StatementResult<S>;
+    return { result, sql };
   });
+
+export const run = <S extends Statement<unknown>>(
+  stmt: S,
+): Effect.Effect<StatementResult<S>, DriverError, Driver> =>
+  runWithSql(stmt).pipe(Effect.map((r) => r.result));
