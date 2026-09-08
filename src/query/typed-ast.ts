@@ -25,5 +25,9 @@ export type Delete<R> = {
   readonly [Brand]?: { kind: 'delete'; result: R };
 } & DeleteIR;
 
+export type RowFromSelection<Sel extends Record<string, Expr<unknown>>> = {
+  [K in keyof Sel]: Sel[K] extends Expr<infer T> ? T : never;
+};
+
 export type Statement<R = unknown> =
   Delete<R> | Insert<R> | Select<R> | Update<R>;
