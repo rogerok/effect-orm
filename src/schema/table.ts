@@ -15,3 +15,7 @@ export const table = <
   name: N,
   columns: C,
 ): TableDef<N, C> => ({ _name: name, _columns: columns });
+export type AnyTableDef = TableDef<
+  string,
+  Record<string, ColumnDef<SqlType, boolean, boolean>>
+>;

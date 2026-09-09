@@ -1,7 +1,6 @@
 import type { Expr, Pred } from '#query/typed-ast.js';
-import type { ColumnDef, SqlType } from '#schema/columns.js';
 import type { InferColumn } from '#schema/infer.js';
-import type { TableDef } from '#schema/table.js';
+import type { AnyTableDef } from '#schema/table.js';
 
 import { lit } from '#query/expressions.js';
 import {
@@ -22,19 +21,29 @@ import {
   or,
 } from '#query/predicates.js';
 
-export type SourceMap = Record<
-  string,
-  TableDef<string, Record<string, ColumnDef<SqlType, boolean, boolean>>>
->;
+export type Source<T extends AnyTableDef, B extends boolean> = {
+  nullable: B;
+  table: T;
+};
+
+export type SourceMap = Record<string, Source<AnyTableDef, boolean>>;
 
 export interface ExpressionBuilder<S extends SourceMap> {
   and: (...preds: Pred[]) => Pred;
   between: <T>(expr: Expr<T>, min: Expr<T>, max: Expr<T>) => Pred;
   bool: (value: boolean) => Pred;
-  col: <A extends keyof S & string, C extends keyof S[A]['_columns'] & string>(
+  col: <
+    A extends keyof S & string,
+    C extends keyof S[A]['table']['_columns'] & string,
+  >(
     alias: A,
     column: C,
-  ) => Expr<InferColumn<S[A]['_columns'][C]>>;
+  ) => Expr<
+    S[A]['nullable'] extends true
+      ? InferColumn<S[A]['table']['_columns'][C]> | null
+      : InferColumn<S[A]['table']['_columns'][C]>
+  >;
+
   eq: <T>(l: Expr<T>, r: Expr<T>) => Pred;
   gt: <T>(l: Expr<T>, r: Expr<T>) => Pred;
   gte: <T>(l: Expr<T>, r: Expr<T>) => Pred;

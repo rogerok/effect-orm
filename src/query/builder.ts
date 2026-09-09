@@ -11,12 +11,12 @@ import type {
 import type { Driver } from '#drivers/driver.js';
 import type {
   ExpressionBuilder,
+  Source,
   SourceMap,
 } from '#query/expression-builder.js';
 import type { Expr, Pred, RowFromSelection, Select } from '#query/typed-ast.js';
-import type { ColumnDef, SqlType } from '#schema/columns.js';
 import type { InferRow } from '#schema/infer.js';
-import type { TableDef } from '#schema/table.js';
+import type { AnyTableDef } from '#schema/table.js';
 
 import {
   type DriverError,
@@ -120,21 +120,15 @@ export class SelectQueryBuilder<S extends SourceMap> {
    * than once`. SQLite отвергает первую ссылку на колонку через занятый alias:
    * `ambiguous column name: u.id`.
    */
-  innerJoin<
-    T extends TableDef<
-      string,
-      Record<string, ColumnDef<SqlType, boolean, boolean>>
-    >,
-    A extends string,
-  >(
+  innerJoin<T extends AnyTableDef, A extends string>(
     table: T,
     alias: A,
-    on: (b: ExpressionBuilder<{ [K in A]: T } & S>) => Pred,
-  ): SelectQueryBuilder<{ [K in A]: T } & S> {
-    const eb = makeExpressionBuilder<{ [K in A]: T } & S>();
+    on: (b: ExpressionBuilder<{ [K in A]: Source<T, false> } & S>) => Pred,
+  ): SelectQueryBuilder<{ [K in A]: Source<T, false> } & S> {
+    const eb = makeExpressionBuilder<{ [K in A]: Source<T, false> } & S>();
     const onPred = on(eb);
 
-    return new SelectQueryBuilder<{ [K in A]: T } & S>({
+    return new SelectQueryBuilder<{ [K in A]: Source<T, false> } & S>({
       ...this.state,
       joins: [
         ...this.state.joins,
@@ -143,21 +137,15 @@ export class SelectQueryBuilder<S extends SourceMap> {
     });
   }
 
-  leftJoin<
-    T extends TableDef<
-      string,
-      Record<string, ColumnDef<SqlType, boolean, boolean>>
-    >,
-    A extends string,
-  >(
+  leftJoin<T extends AnyTableDef, A extends string>(
     table: T,
     alias: A,
-    on: (b: ExpressionBuilder<{ [K in A]: T } & S>) => Pred,
-  ): SelectQueryBuilder<{ [K in A]: T } & S> {
-    const eb = makeExpressionBuilder<{ [K in A]: T } & S>();
+    on: (b: ExpressionBuilder<{ [K in A]: Source<T, false> } & S>) => Pred,
+  ): SelectQueryBuilder<{ [K in A]: Source<T, true> } & S> {
+    const eb = makeExpressionBuilder<{ [K in A]: Source<T, false> } & S>();
     const onPred = on(eb);
 
-    return new SelectQueryBuilder<{ [K in A]: T } & S>({
+    return new SelectQueryBuilder<{ [K in A]: Source<T, true> } & S>({
       ...this.state,
       joins: [
         ...this.state.joins,
@@ -212,16 +200,17 @@ export class SelectQueryBuilder<S extends SourceMap> {
   }
 
   selectAll(
+    // использую  type level проверку, вместо runtime проверки
     this: IsSingleSource<S> extends true ? SelectQueryBuilder<S> : never,
-  ): ExecutableQuery<InferRow<S[keyof S]>> {
+  ): ExecutableQuery<InferRow<S[keyof S]['table']>> {
     return new ExecutableQuery({ ...this.state, columns: '*' });
   }
 }
 
-export const selectFrom = <T extends SourceMap[string], A extends string>(
+export const selectFrom = <T extends AnyTableDef, A extends string>(
   table: T,
   alias: A,
-): SelectQueryBuilder<{ [K in A]: T }> =>
+): SelectQueryBuilder<{ [K in A]: Source<T, false> }> =>
   SelectQueryBuilder.__make({
     from: { table: table._name, alias },
     joins: [],

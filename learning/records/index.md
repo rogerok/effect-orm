@@ -85,6 +85,8 @@
 
 39. [0039 — `selectAll()` ограничен единственным источником](0039-e3-1-select-all-single-source.md): `this` parameter отклоняет вызов после join, признак вычисляется из числа ключей `S`, а тип строки собирается из `S[keyof S]` и `InferRow`.
 
+40. [0040 — nullability как метаданные источника](0040-l3-21-source-nullability-metadata.md): `SourceMap` хранит пару `{ table, nullable }`, граница держит `boolean`, а литералы приходят из возвращаемых типов трёх производителей; `ON` фильтрует пары строк до подстановки NULL, поэтому внутри callback источник ещё не nullable.
+
 ## Опорные справочники
 
 - [AST — дерево обычных объектов](../references/ast-tree-basics.html) — записи 0005–0007.

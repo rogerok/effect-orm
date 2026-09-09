@@ -1,13 +1,9 @@
 import type { Expr } from '#query/typed-ast.js';
-import type { ColumnDef, SqlType } from '#schema/columns.js';
 import type { InferColumn } from '#schema/infer.js';
-import type { TableDef } from '#schema/table.js';
+import type { AnyTableDef } from '#schema/table.js';
 
 export const col = <
-  T extends TableDef<
-    string,
-    Record<string, ColumnDef<SqlType, boolean, boolean>>
-  >,
+  T extends AnyTableDef,
   K extends keyof T['_columns'] & string,
 >(
   table: T,

@@ -2,47 +2,55 @@
 
 ## Intent
 
-Урок 3 курса пройден до упражнений. Текущая цель — упражнение E3.1: `selectAll()` только для запроса без join.
+Урок 3 курса пройден до упражнений. Идёт упражнение E3.2 курса: nullability источника после LEFT JOIN.
 
 ## Current phase
 
-Builder урока 3 собран: FSM из двух классов, SourceMap, `where`/`orderBy`/`limit`/`offset`, projection, три terminals,
-`innerJoin` и `leftJoin`. История шагов и подтверждения — в [записях](records/index.md), таблица в
-[progress.md](progress.md).
+Builder урока 3 собран: FSM из двух классов, `SourceMap`, `where`/`orderBy`/`limit`/`offset`, projection, три
+terminals, `innerJoin` и `leftJoin`. `SourceMap` переведён на `Source<T, N>` с признаком nullability. История шагов и
+подтверждения — в [записях](records/index.md), таблица в [progress.md](progress.md).
 
 ## Current task
 
-**E3.2 курса (roadmap L3.20–L3.22): nullability источника после LEFT JOIN.**
+**L3.22: протянуть nullability источника в возвращаемый тип `col`.**
 
-E3.1 закрыт и проверен, [запись 0039](records/0039-e3-1-select-all-single-source.md). Незакрытый долг того шага:
-проверочных случаев для `selectAll` в репозитории нет, `src/hw/e3-2.ts` удалён.
+L3.21 закрыт и проверен, [запись 0040](records/0040-l3-21-source-nullability-metadata.md).
 
-Содержание нового шага по курсу: `SourceMap` перестаёт быть `Record<string, TableDef>` и становится
-`Record<string, { table, nullable }>`; `selectFrom` и `innerJoin` ставят `nullable: false`, `leftJoin` —
-`nullable: true`; `col` возвращает `Expr<T | null>` для nullable источника. Это правка типов, затрагивающая
-`expression-builder.ts` и все методы билдера, поэтому её нужно разбить на шаги, а не делать одной правкой.
+Условный тип в `col` пользователь уже написал:
 
-Первый наблюдаемый факт уже есть: после `leftJoin` строка `Cid` пришла с `postTitle: null` при типе `string`
-([запись 0038](records/0038-l3-left-join-runtime-null.md)).
+```ts
+) => Expr<
+  S[A]['nullable'] extends true
+    ? InferColumn<S[A]['table']['_columns'][C]> | null
+    : InferColumn<S[A]['table']['_columns'][C]>
+>;
+```
+
+Он компилируется, но его поведение не наблюдалось. Не хватает двух вещей: утверждений на возвращаемый тип `col` для
+inner и left источников и реальной несовпавшей строки, где значение совпадает с типом.
 
 ## Completion criteria for the current task
 
-- `SourceMap` хранит признак nullability источника; `selectFrom`, `innerJoin` и `leftJoin` заполняют его правильно.
-- `col` для источника из LEFT JOIN даёт `Expr<T | null>`, для остальных источников тип не меняется.
-- Реальная строка без совпадения совпадает с типом: там, где тип допускает `null`, приходит `null`, и наоборот.
-- Существующие вызовы билдера продолжают компилироваться.
+- `col` для источника из LEFT JOIN даёт `Expr<T | null>`, для остальных источников тип не меняется; оба случая
+  подтверждены `expectTypeOf` и мутационной проверкой.
+- Объявленная nullable колонка из non-nullable источника не получает второй `null` и не ломается.
+- Реальный запрос с LEFT JOIN на SQLite: там, где тип допускает `null`, приходит `null`, и наоборот.
+- Существующие вызовы билдера продолжают компилироваться; `pnpm test src/query/builder.test.ts` остаётся зелёным.
 
 ## Evidence from repository
 
-- `src/query/builder.ts` содержит `innerJoin` (с doc comment), `leftJoin` и `selectAll` с условным `this`.
-- Рядом с классом объявлены `IsUnion` и `IsSingleSource`.
-- `pnpm check-types` — exit code 0.
-- LEFT JOIN проверен на SQLite: 4 строки, у пользователя без постов `postTitle: null` при типе `string`. Запись 0038.
-- `selectAll` проверен: SQL `SELECT * FROM "users" AS "u"`, реальные строки, отклонение после обоих join. Запись 0039.
-- `src/hw/e3-1.ts` содержит compile-only проверки `selectAll`: вызов после `innerJoin` под `@ts-expect-error` и обычный
-  вызов. Мутация (удаление `.selectAll()`) даёт `TS2578`, то есть директива покрывает нужное ограничение.
-- Не покрыты: вызов после `leftJoin`, вызов после модификатора, поведение join во время исполнения.
-- `oxlint` выдаёт два предупреждения `no-unused-vars` на `src/hw/e3-1.ts`.
+- `SourceMap = Record<string, Source<AnyTableDef, boolean>>` в `src/query/expression-builder.ts`; `AnyTableDef` вынесен
+  в `src/schema/table.ts` и заменил повторяющееся написание в `expressions.ts` и `statements.ts`.
+- `selectFrom` и `innerJoin` возвращают `Source<T, false>`, `leftJoin` — `Source<T, true>`; внутри `on` у `leftJoin`
+  источник помечен `false`.
+- `pnpm check-types` — exit code 0. `pnpm test src/query/builder.test.ts` — 7 passed.
+- `src/hw/e3-2.test.ts`: `SourceOf<Q>` через `infer`, три утверждения `toEqualTypeOf` на `['nullable']`, обращения
+  `b.col` к присоединяемому alias внутри обоих `on`.
+- Мутация `Source<T, true>` → `Source<T, false>` в `leftJoin` даёт ровно одну ошибку `TS2344` на строке 33, то есть
+  утверждение про `'c'` действительно проверяет флаг.
+- `pnpm lint` — три предупреждения о неиспользуемых импортах `ColumnDef`, `SqlType`, `TableDef` в
+  `src/query/expression-builder.ts`.
+- `pnpm format:check` по `src/` чистый; предупреждения относятся только к `learning/references/*.html`.
 
 ## Teaching mode
 
@@ -59,12 +67,14 @@ write builders.
 
 ## Next implementation boundary
 
-После E3.1 — E3.2 курса, он же L3.20–L3.22: nullability источника после LEFT JOIN. Пропущенные L3.18 и L3.19 остаются
-долгом и закрываются тестом на join.
+После L3.22 упражнение E3.2 закрыто. Дальше по roadmap — L3.23 (`executeStream` на `ExecutableQuery`), затем write
+builder L3.24–L3.28. Пропущенные L3.18 и L3.19 остаются долгом и закрываются тестом на join во время исполнения.
 
 ## Open uncertainties
 
-- Тип результата после `leftJoin` не выражает `null`.
+- Поведение `col` для declared nullable колонки из non-nullable источника не проверено: два источника `null` могут
+  дать `T | null | null` или потерять один из них.
+- Тестов на join во время исполнения нет; вся проверка join — на уровне типов.
 - Обоснование политики повторного alias пользователем не сформулировано.
 - Смысл `exactOptionalPropertyTypes` самостоятельно не объяснён.
 - Непроверенное приведение `raw.rows as ... StatementResult<S>` в `typed-run.ts`; runtime schema validation

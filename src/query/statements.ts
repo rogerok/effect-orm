@@ -7,9 +7,8 @@ import type {
   Select,
   Update,
 } from '#query/typed-ast.js';
-import type { ColumnDef, SqlType } from '#schema/columns.js';
 import type { InferInsert, InferRow, InferUpdate } from '#schema/infer.js';
-import type { TableDef } from '#schema/table.js';
+import type { AnyTableDef } from '#schema/table.js';
 
 type SelectOptions = {
   readonly limit?: number;
@@ -22,10 +21,7 @@ type SelectOptions = {
 };
 
 export const select = <
-  T extends TableDef<
-    string,
-    Record<string, ColumnDef<SqlType, boolean, boolean>>
-  >,
+  T extends AnyTableDef,
   Cols extends ReadonlyArray<keyof InferRow<T> & string>,
 >(
   table: T,
@@ -43,12 +39,7 @@ export const select = <
     offset: options.offset,
   }) as Select<Pick<InferRow<T>, Cols[number]>>;
 
-export const selectAll = <
-  T extends TableDef<
-    string,
-    Record<string, ColumnDef<SqlType, boolean, boolean>>
-  >,
->(
+export const selectAll = <T extends AnyTableDef>(
   table: T,
   options: SelectOptions = {},
 ): Select<InferRow<T>> =>
@@ -63,18 +54,11 @@ export const selectAll = <
     offset: options.offset,
   }) as Select<InferRow<T>>;
 
-export type ReturningOption<
-  T extends TableDef<
-    string,
-    Record<string, ColumnDef<SqlType, boolean, boolean>>
-  >,
-> = ReadonlyArray<keyof InferRow<T> & string> | '*';
+export type ReturningOption<T extends AnyTableDef> =
+  ReadonlyArray<keyof InferRow<T> & string> | '*';
 
 type InferReturning<
-  T extends TableDef<
-    string,
-    Record<string, ColumnDef<SqlType, boolean, boolean>>
-  >,
+  T extends AnyTableDef,
   R extends ReturningOption<T> | undefined,
 > = R extends '*'
   ? InferRow<T>
@@ -85,10 +69,7 @@ type InferReturning<
     : { readonly affectedRows: number };
 
 export const insert = <
-  T extends TableDef<
-    string,
-    Record<string, ColumnDef<SqlType, boolean, boolean>>
-  >,
+  T extends AnyTableDef,
   R extends ReturningOption<T> | undefined = undefined,
 >(
   table: T,
@@ -117,10 +98,7 @@ export const insert = <
 };
 
 interface DelOptions<
-  T extends TableDef<
-    string,
-    Record<string, ColumnDef<SqlType, boolean, boolean>>
-  >,
+  T extends AnyTableDef,
   R extends ReturningOption<T> | undefined,
 > {
   readonly returning?: R;
@@ -128,10 +106,7 @@ interface DelOptions<
 }
 
 export const del = <
-  T extends TableDef<
-    string,
-    Record<string, ColumnDef<SqlType, boolean, boolean>>
-  >,
+  T extends AnyTableDef,
   R extends ReturningOption<T> | undefined = undefined,
 >(
   table: T,
@@ -154,10 +129,7 @@ export const del = <
 };
 
 interface UpdateOptions<
-  T extends TableDef<
-    string,
-    Record<string, ColumnDef<SqlType, boolean, boolean>>
-  >,
+  T extends AnyTableDef,
   R extends ReturningOption<T> | undefined,
 > {
   readonly returning?: R;
@@ -165,10 +137,7 @@ interface UpdateOptions<
 }
 
 export const update = <
-  T extends TableDef<
-    string,
-    Record<string, ColumnDef<SqlType, boolean, boolean>>
-  >,
+  T extends AnyTableDef,
   R extends ReturningOption<T> | undefined = undefined,
 >(
   table: T,

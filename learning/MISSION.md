@@ -30,11 +30,14 @@ I/O. Практическая проблема текущего кода: single
 
 ## Current step
 
-Упражнение E3.2 курса, оно же L3.20–L3.22 из [roadmap](roadmap.md): nullability источника после LEFT JOIN.
+Шаг L3.22 из [roadmap](roadmap.md): протянуть nullability источника в возвращаемый тип `col`. Это последний шаг
+упражнения E3.2 курса.
 
 `innerJoin`, `leftJoin` и `selectAll` реализованы и проверены ([0036](records/0036-l3-14-inner-join-source-extension.md),
-[0038](records/0038-l3-left-join-runtime-null.md), [0039](records/0039-e3-1-select-all-single-source.md)). Открытый
-долг — тип результата после `leftJoin` обещает `string` там, где приходит `null`.
+[0038](records/0038-l3-left-join-runtime-null.md), [0039](records/0039-e3-1-select-all-single-source.md)). `SourceMap`
+хранит признак nullability источника, флаги подтверждены типовыми утверждениями и мутацией
+([0040](records/0040-l3-21-source-nullability-metadata.md)). Открытый долг — влияние признака на тип выражения ещё не
+наблюдалось.
 
 `innerJoin` реализован и проверен: SourceMap растёт через пересечение, `on` видит обе стороны, IR содержит один `Join`,
 SQL и строки на SQLite совпадают с ожидаемыми. Подробности в [записи 0036](records/0036-l3-14-inner-join-source-extension.md).
