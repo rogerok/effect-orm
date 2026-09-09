@@ -30,10 +30,11 @@ I/O. Практическая проблема текущего кода: single
 
 ## Current step
 
-Упражнение E3.1 курса, оно же L3.13 из [roadmap](roadmap.md): `selectAll()` разрешён только при единственном источнике.
+Упражнение E3.2 курса, оно же L3.20–L3.22 из [roadmap](roadmap.md): nullability источника после LEFT JOIN.
 
-`innerJoin` и `leftJoin` реализованы и проверены на SQLite. Открытый долг — тип результата после `leftJoin` ещё не
-выражает `null` ([запись 0038](records/0038-l3-left-join-runtime-null.md)); это упражнение E3.2 курса.
+`innerJoin`, `leftJoin` и `selectAll` реализованы и проверены ([0036](records/0036-l3-14-inner-join-source-extension.md),
+[0038](records/0038-l3-left-join-runtime-null.md), [0039](records/0039-e3-1-select-all-single-source.md)). Открытый
+долг — тип результата после `leftJoin` обещает `string` там, где приходит `null`.
 
 `innerJoin` реализован и проверен: SourceMap растёт через пересечение, `on` видит обе стороны, IR содержит один `Join`,
 SQL и строки на SQLite совпадают с ожидаемыми. Подробности в [записи 0036](records/0036-l3-14-inner-join-source-extension.md).

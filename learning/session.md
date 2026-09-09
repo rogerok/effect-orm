@@ -12,32 +12,37 @@ Builder урока 3 собран: FSM из двух классов, SourceMap, 
 
 ## Current task
 
-**E3.1 (roadmap L3.13): `selectAll()` на `SelectQueryBuilder`, доступный только при единственном источнике.**
+**E3.2 курса (roadmap L3.20–L3.22): nullability источника после LEFT JOIN.**
 
-Новая механика шага — `this` parameter: тип получателя проверяется в месте вызова, поэтому метод можно объявить в
-классе, но сделать недоступным для части его экземпляров.
+E3.1 закрыт и проверен, [запись 0039](records/0039-e3-1-select-all-single-source.md). Незакрытый долг того шага:
+проверочных случаев для `selectAll` в репозитории нет, `src/hw/e3-2.ts` удалён.
 
-Подсказка курса: маркер `__singleSource: true`, который ставит `selectFrom` и убирают `innerJoin`/`leftJoin`.
-Допустима и проверка через `keyof S`; выбор за пользователем, но он должен объяснить, что именно делает ограничение.
+Содержание нового шага по курсу: `SourceMap` перестаёт быть `Record<string, TableDef>` и становится
+`Record<string, { table, nullable }>`; `selectFrom` и `innerJoin` ставят `nullable: false`, `leftJoin` —
+`nullable: true`; `col` возвращает `Expr<T | null>` для nullable источника. Это правка типов, затрагивающая
+`expression-builder.ts` и все методы билдера, поэтому её нужно разбить на шаги, а не делать одной правкой.
 
-Готовые опоры в проекте: `Projection` в `src/compiler/ir.ts` уже допускает `'*'`, компилятор эту ветку печатает
-(`src/compiler/compiler.ts:103`), `InferRow<T>` в `src/schema/infer.ts:18` даёт тип строки таблицы.
+Первый наблюдаемый факт уже есть: после `leftJoin` строка `Cid` пришла с `postTitle: null` при типе `string`
+([запись 0038](records/0038-l3-left-join-runtime-null.md)).
 
 ## Completion criteria for the current task
 
-- `selectFrom(users, 'u').selectAll()` компилируется в `SELECT * FROM "users" AS "u"`.
-- Тип результата совпадает с `InferRow` таблицы, а не с `unknown` или `Record<string, unknown>`.
-- После `innerJoin` или `leftJoin` вызов `selectAll()` не компилируется; negative case закреплён `@ts-expect-error`.
-- Пользователь объясняет своими словами, почему ограничение выражено типом получателя, а не проверкой во время
-  исполнения.
+- `SourceMap` хранит признак nullability источника; `selectFrom`, `innerJoin` и `leftJoin` заполняют его правильно.
+- `col` для источника из LEFT JOIN даёт `Expr<T | null>`, для остальных источников тип не меняется.
+- Реальная строка без совпадения совпадает с типом: там, где тип допускает `null`, приходит `null`, и наоборот.
+- Существующие вызовы билдера продолжают компилироваться.
 
 ## Evidence from repository
 
-- `src/query/builder.ts` содержит `innerJoin` (с doc comment) и `leftJoin`; обе возвращают
-  `SelectQueryBuilder<{ [K in A]: T } & S>`.
+- `src/query/builder.ts` содержит `innerJoin` (с doc comment), `leftJoin` и `selectAll` с условным `this`.
+- Рядом с классом объявлены `IsUnion` и `IsSingleSource`.
 - `pnpm check-types` — exit code 0.
 - LEFT JOIN проверен на SQLite: 4 строки, у пользователя без постов `postTitle: null` при типе `string`. Запись 0038.
-- Тестов на join в репозитории нет; все проверки выполнялись временными скриптами и удалены.
+- `selectAll` проверен: SQL `SELECT * FROM "users" AS "u"`, реальные строки, отклонение после обоих join. Запись 0039.
+- `src/hw/e3-1.ts` содержит compile-only проверки `selectAll`: вызов после `innerJoin` под `@ts-expect-error` и обычный
+  вызов. Мутация (удаление `.selectAll()`) даёт `TS2578`, то есть директива покрывает нужное ограничение.
+- Не покрыты: вызов после `leftJoin`, вызов после модификатора, поведение join во время исполнения.
+- `oxlint` выдаёт два предупреждения `no-unused-vars` на `src/hw/e3-1.ts`.
 
 ## Teaching mode
 

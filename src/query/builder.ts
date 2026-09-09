@@ -15,6 +15,7 @@ import type {
 } from '#query/expression-builder.js';
 import type { Expr, Pred, RowFromSelection, Select } from '#query/typed-ast.js';
 import type { ColumnDef, SqlType } from '#schema/columns.js';
+import type { InferRow } from '#schema/infer.js';
 import type { TableDef } from '#schema/table.js';
 
 import {
@@ -89,6 +90,13 @@ interface BuilderState {
   readonly offset?: number;
   readonly where?: PredIR;
 }
+
+type IsUnion<T, U = T> = T extends unknown
+  ? [U] extends [T]
+    ? false
+    : true
+  : never;
+type IsSingleSource<S> = IsUnion<keyof S> extends true ? false : true;
 
 export class SelectQueryBuilder<S extends SourceMap> {
   private constructor(private readonly state: BuilderState) {}
@@ -201,6 +209,12 @@ export class SelectQueryBuilder<S extends SourceMap> {
     }));
 
     return new ExecutableQuery({ ...this.state, columns });
+  }
+
+  selectAll(
+    this: IsSingleSource<S> extends true ? SelectQueryBuilder<S> : never,
+  ): ExecutableQuery<InferRow<S[keyof S]>> {
+    return new ExecutableQuery({ ...this.state, columns: '*' });
   }
 }
 
