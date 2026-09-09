@@ -2,55 +2,56 @@
 
 ## Intent
 
-Урок 3 курса пройден до упражнений. Идёт упражнение E3.2 курса: nullability источника после LEFT JOIN.
+Урок 3 курса пройден до упражнений. Упражнение E3.2 (LEFT JOIN nullability) закрыто. Идёт упражнение E3.3 курса:
+write-builder — INSERT, UPDATE, DELETE.
 
 ## Current phase
 
-Builder урока 3 собран: FSM из двух классов, `SourceMap`, `where`/`orderBy`/`limit`/`offset`, projection, три
-terminals, `innerJoin` и `leftJoin`. `SourceMap` переведён на `Source<T, N>` с признаком nullability. История шагов и
-подтверждения — в [записях](records/index.md), таблица в [progress.md](progress.md).
+Read-builder урока 3 собран целиком: FSM из двух классов, `SourceMap` с признаком nullability,
+`where`/`orderBy`/`limit`/`offset`, projection, три terminals, `innerJoin` и `leftJoin`; nullability источника доходит
+до типа строки результата. История шагов и подтверждения — в [записях](records/index.md), таблица в
+[progress.md](progress.md).
 
 ## Current task
 
-**L3.22: протянуть nullability источника в возвращаемый тип `col`.**
+**L3.25: INSERT нескольких строк — общий список колонок.**
 
-L3.21 закрыт и проверен, [запись 0040](records/0040-l3-21-source-nullability-metadata.md).
+L3.24 закрыт: пользователь написал начальное и исполняемое состояния INSERT, тест результата и два типовых
+утверждения. Мутация `returning: '*'` обнаружена тестом; пользователь прислал ошибку и восстановил исходный `toIR`.
+После восстановления `pnpm check-types` завершился с кодом `0`, девять тестов двух builder-файлов прошли.
+Подробности — [запись 0042](records/0042-l3-24-insert-fsm.md).
 
-Условный тип в `col` пользователь уже написал:
+По решению пользователя `ExecutableInsert.toIR(): Insert<R>` остаётся; `execute` использует `run(this.toIR())`.
 
-```ts
-) => Expr<
-  S[A]['nullable'] extends true
-    ? InferColumn<S[A]['table']['_columns'][C]> | null
-    : InferColumn<S[A]['table']['_columns'][C]>
->;
-```
+Следующее действие до написания теста: спрогнозировать порядок параметров для двух строк
+`[{ id: 1, name: 'John' }, { name: 'Ann', id: 2 }]`. Первая строка задаёт SQL-список колонок `("id", "name")`;
+нужно объяснить связь этого списка с позициями значений во второй строке.
 
-Он компилируется, но его поведение не наблюдалось. Не хватает двух вещей: утверждений на возвращаемый тип `col` для
-inner и left источников и реальной несовпавшей строки, где значение совпадает с типом.
+Существующий компилятор уже обрабатывает несколько строк. Сначала проверяем его поведение через builder;
+не добавляем новую реализацию INSERT или дополнительную проверку без обнаруженного пробела.
 
 ## Completion criteria for the current task
 
-- `col` для источника из LEFT JOIN даёт `Expr<T | null>`, для остальных источников тип не меняется; оба случая
-  подтверждены `expectTypeOf` и мутационной проверкой.
-- Объявленная nullable колонка из non-nullable источника не получает второй `null` и не ломается.
-- Реальный запрос с LEFT JOIN на SQLite: там, где тип допускает `null`, приходит `null`, и наоборот.
-- Существующие вызовы билдера продолжают компилироваться; `pnpm test src/query/builder.test.ts` остаётся зелёным.
+- INSERT двух строк формирует один SQL-запрос; точные SQL и параметры подтверждены через `compile(query.toIR(), dialect)`.
+- Разный порядок ключей объектов с одинаковым набором колонок не меняет привязку значений к колонкам.
+- Исполнение допустимого запроса на реальном драйвере подтверждает содержимое обеих вставленных строк.
+- Несовпадающие наборы колонок отклоняются до вызова драйвера с точной ошибкой; случай не должен обходить типы через
+  небезопасное приведение. Для примера можно использовать необязательную колонку.
+- Пользователь объясняет связь списка колонок INSERT с позициями значений каждого кортежа VALUES.
+- Узкие тесты и `pnpm check-types` проходят.
 
 ## Evidence from repository
 
-- `SourceMap = Record<string, Source<AnyTableDef, boolean>>` в `src/query/expression-builder.ts`; `AnyTableDef` вынесен
-  в `src/schema/table.ts` и заменил повторяющееся написание в `expressions.ts` и `statements.ts`.
-- `selectFrom` и `innerJoin` возвращают `Source<T, false>`, `leftJoin` — `Source<T, true>`; внутри `on` у `leftJoin`
-  источник помечен `false`.
-- `pnpm check-types` — exit code 0. `pnpm test src/query/builder.test.ts` — 7 passed.
-- `src/hw/e3-2.test.ts`: `SourceOf<Q>` через `infer`, три утверждения `toEqualTypeOf` на `['nullable']`, обращения
-  `b.col` к присоединяемому alias внутри обоих `on`.
-- Мутация `Source<T, true>` → `Source<T, false>` в `leftJoin` даёт ровно одну ошибку `TS2344` на строке 33, то есть
-  утверждение про `'c'` действительно проверяет флаг.
-- `pnpm lint` — три предупреждения о неиспользуемых импортах `ColumnDef`, `SqlType`, `TableDef` в
-  `src/query/expression-builder.ts`.
-- `pnpm format:check` по `src/` чистый; предупреждения относятся только к `learning/references/*.html`.
+- `src/query/write-builders.ts`: `values` использует существующий `insert`; `toIR` предоставляет готовый `Insert<R>`.
+- `src/compiler/compiler.ts:194–241`: `compileInsert` берёт `Object.keys` первой строки, проверяет одинаковый набор
+  колонок через длину и `Object.hasOwn`, затем читает каждую строку по именам колонок первой строки.
+- Формулировка roadmap про ordered column set требует уточнения: одинаковым должен быть порядок значений относительно
+  общего SQL-списка колонок, а не порядок перечисления ключей каждого входного объекта.
+- При несовпадении набора колонок `compileInsert` выбрасывает обычный `Error`; это не типизированный `DriverError`.
+- `InferInsert<T>` делает необязательными колонки с `_pk: true` или `_hasDefault: true`.
+- Effect установлен в версии `4.0.0-rc.108`, Vitest — `4.1.11`.
+- После L3.24: `pnpm check-types` — код `0`;
+  `pnpm test src/query/write-builder.test.ts src/query/builder.test.ts` — девять тестов прошли.
 
 ## Teaching mode
 
@@ -67,13 +68,13 @@ write builders.
 
 ## Next implementation boundary
 
-После L3.22 упражнение E3.2 закрыто. Дальше по roadmap — L3.23 (`executeStream` на `ExecutableQuery`), затем write
-builder L3.24–L3.28. Пропущенные L3.18 и L3.19 остаются долгом и закрываются тестом на join во время исполнения.
+Упражнение E3.3 разложено на L3.24–L3.28: INSERT FSM, multi-row invariants, variadic `returning`, UPDATE FSM,
+DELETE FSM. L3.23 (`executeStream` на `ExecutableQuery`) относится к упражнению E3.7 курса и отложен по просьбе
+пользователя; это долг, а не пропуск prerequisite — write-builder от streaming не зависит. Пропущенные L3.18 и L3.19
+остаются долгом и закрываются тестом на join во время исполнения.
 
 ## Open uncertainties
 
-- Поведение `col` для declared nullable колонки из non-nullable источника не проверено: два источника `null` могут
-  дать `T | null | null` или потерять один из них.
 - Тестов на join во время исполнения нет; вся проверка join — на уровне типов.
 - Обоснование политики повторного alias пользователем не сформулировано.
 - Смысл `exactOptionalPropertyTypes` самостоятельно не объяснён.

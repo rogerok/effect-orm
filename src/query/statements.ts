@@ -57,7 +57,7 @@ export const selectAll = <T extends AnyTableDef>(
 export type ReturningOption<T extends AnyTableDef> =
   ReadonlyArray<keyof InferRow<T> & string> | '*';
 
-type InferReturning<
+export type InferReturning<
   T extends AnyTableDef,
   R extends ReturningOption<T> | undefined,
 > = R extends '*'

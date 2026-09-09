@@ -30,14 +30,7 @@ I/O. Практическая проблема текущего кода: single
 
 ## Current step
 
-Шаг L3.22 из [roadmap](roadmap.md): протянуть nullability источника в возвращаемый тип `col`. Это последний шаг
-упражнения E3.2 курса.
-
-`innerJoin`, `leftJoin` и `selectAll` реализованы и проверены ([0036](records/0036-l3-14-inner-join-source-extension.md),
-[0038](records/0038-l3-left-join-runtime-null.md), [0039](records/0039-e3-1-select-all-single-source.md)). `SourceMap`
-хранит признак nullability источника, флаги подтверждены типовыми утверждениями и мутацией
-([0040](records/0040-l3-21-source-nullability-metadata.md)). Открытый долг — влияние признака на тип выражения ещё не
-наблюдалось.
-
-`innerJoin` реализован и проверен: SourceMap растёт через пересечение, `on` видит обе стороны, IR содержит один `Join`,
-SQL и строки на SQLite совпадают с ожидаемыми. Подробности в [записи 0036](records/0036-l3-14-inner-join-source-extension.md).
+Текущая точка и следующая задача определяются только [session.md](session.md).
+L3.24 — INSERT одной строки без `returning` — закрыт; результат и проверки описаны в
+[записи 0042](records/0042-l3-24-insert-fsm.md).
+Текущий шаг L3.25 продолжает упражнение E3.3: INSERT нескольких строк и соответствие значений общему списку колонок.

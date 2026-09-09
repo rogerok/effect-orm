@@ -13,9 +13,9 @@ import type {
 import { compile } from '#compiler/compiler.js';
 import { Driver } from '#drivers/driver.js';
 
-type AffectedRows = { readonly affectedRows: number };
+export type AffectedRows = { readonly affectedRows: number };
 
-type StatementResult<S> =
+export type StatementResult<S> =
   S extends Select<infer R>
     ? ReadonlyArray<R>
     : S extends Insert<infer R>
