@@ -28,7 +28,7 @@ concept → small task → пользователь реализует → аг�
 ### L3.1 — Задать FSM допустимых вызовов
 
 - **Concept:** состояние API выражается набором доступных методов.
-- **Small task:** выписать valid и invalid sequences для `SelectQueryBuilder` и `ExecutableQuery`.
+- **Small task:** выписать valid и invalid sequences для `SelectQueryBuilder` и `ExecutableUpdate`.
 - **Verification:** compile-only examples показывают отсутствие `execute` до `select` и отсутствие `where` после
   `select`.
 - **Comprehension:** какую ошибку предотвращают два класса по сравнению с runtime flag?
@@ -112,7 +112,8 @@ concept → small task → пользователь реализует → аг�
 
 ### L3.13 — Single-table `selectAll` (текущий шаг, он же упражнение E3.1)
 
-**Порядок изменён.** Шаг выполняется после join, а не до них. Причина: критерий проверки требует negative case «после join
+**Порядок изменён.** Шаг выполняется после join, а не до них. Причина: критерий проверки требует negative case «после
+join
 вызов не компилируется», а до появления `innerJoin` такой случай написать не на чем. Курс располагает `selectAll`
 в упражнении E3.1, то есть после раздела 3.5 с join. Нумерация шагов сохранена, чтобы ссылки в записях остались верными.
 

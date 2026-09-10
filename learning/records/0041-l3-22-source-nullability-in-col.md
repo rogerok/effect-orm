@@ -19,7 +19,7 @@
 ```
 
 Наблюдаемая проверка — не на возвращаемом типе `col` напрямую, а на типе строки результата после `select`
-(`src/hw/e3-2.test.ts:31-54`). Из `ExecutableQuery` тип извлекается через `infer`:
+(`src/hw/e3-2.test.ts:31-54`). Из `ExecutableUpdate` тип извлекается через `infer`:
 
 ```ts
 type RowOf<Q> = Q extends ExecutableQuery<infer R> ? R : never;

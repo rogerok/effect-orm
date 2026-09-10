@@ -63,7 +63,7 @@ export type InferReturning<
 > = R extends '*'
   ? InferRow<T>
   : R extends ReadonlyArray<infer K>
-    ? K extends keyof InferRow<T>
+    ? [K] extends [keyof InferRow<T>]
       ? Pick<InferRow<T>, K>
       : never
     : { readonly affectedRows: number };

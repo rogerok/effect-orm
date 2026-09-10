@@ -4,35 +4,45 @@
 
 **Concept:** Runtime intermediate representation (IR) против типизированной обёртки.
 
-**Why it matters:** ORM должна отдельно хранить исполнимую структуру запроса и compile-time информацию о типе выражения/результата. Смешение границ ведёт либо к тяжёлому runtime representation, либо к ложной уверенности, что TypeScript валидирует строки БД.
+**Why it matters:** ORM должна отдельно хранить исполнимую структуру запроса и compile-time информацию о типе
+выражения/результата. Смешение границ ведёт либо к тяжёлому runtime representation, либо к ложной уверенности, что
+TypeScript валидирует строки БД.
 
-**Where it appears in this project:** `src/compiler/ir.ts`, `src/query/typed-ast.ts`, `src/query/typed-run.ts`, `src/query/typed-stream.ts`.
+**Where it appears in this project:** `src/compiler/ir.ts`, `src/query/typed-ast.ts`, `src/query/typed-run.ts`,
+`src/query/typed-stream.ts`.
 
 **Prerequisites:** discriminated unions, generics, type erasure.
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** пользователь без исходника объясняет, какие поля существуют в JavaScript, где живёт `R`, и показывает один случай, где raw DB row нарушает compile-time promise.
+**How mastery will be verified:** пользователь без исходника объясняет, какие поля существуют в JavaScript, где живёт
+`R`, и показывает один случай, где raw DB row нарушает compile-time promise.
 
 ## 2. Phantom marker
 
-**Concept:** Phantom marker — поле типа, которое связывает generic parameter со structural compatibility, но не обязано существовать в runtime object.
+**Concept:** Phantom marker — поле типа, которое связывает generic parameter со structural compatibility, но не обязано
+существовать в runtime object.
 
-**Why it matters:** без использования `T` в структуре `Expr<T>` generic parameter не защищает сравнение выражений разных value types.
+**Why it matters:** без использования `T` в структуре `Expr<T>` generic parameter не защищает сравнение выражений разных
+value types.
 
-**Where it appears in this project:** unique symbol `Brand` в `src/query/typed-ast.ts` и signatures в `src/query/predicates.ts`.
+**Where it appears in this project:** unique symbol `Brand` в `src/query/typed-ast.ts` и signatures в
+`src/query/predicates.ts`.
 
 **Prerequisites:** structural typing, generics, erased types.
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** compile-time experiment до/после удаления marker плюс объяснение, почему runtime output не меняется.
+**How mastery will be verified:** compile-time experiment до/после удаления marker плюс объяснение, почему runtime
+output не меняется.
 
 ## 3. Type-state FSM через разные class surfaces
 
-**Concept:** Конечный автомат (finite state machine, FSM), где каждое состояние представлено отдельным классом и набором методов.
+**Concept:** Конечный автомат (finite state machine, FSM), где каждое состояние представлено отдельным классом и набором
+методов.
 
-**Why it matters:** запрещает `execute()` до projection и запрещает продолжать изменять запрос после перехода в executable state без runtime flags.
+**Why it matters:** запрещает `execute()` до projection и запрещает продолжать изменять запрос после перехода в
+executable state без runtime flags.
 
 **Where it appears in this project:** будет добавлен в builder урока 3 как `SelectQueryBuilder<S> → ExecutableQuery<R>`.
 
@@ -40,13 +50,15 @@
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** таблица valid/invalid transitions, negative type cases и реализация двух состояний без state casts в public API.
+**How mastery will be verified:** таблица valid/invalid transitions, negative type cases и реализация двух состояний без
+state casts в public API.
 
 ## 4. Immutable persistent builder
 
 **Concept:** Каждый modifier возвращает новый builder с новым state; старый экземпляр остаётся неизменным.
 
-**Why it matters:** общий query prefix можно безопасно разветвить, а type-level state не расходится с мутировавшим runtime object.
+**Why it matters:** общий query prefix можно безопасно разветвить, а type-level state не расходится с мутировавшим
+runtime object.
 
 **Where it appears in this project:** будущие `where`, `innerJoin`, `orderBy`, `limit`, `offset`.
 
@@ -54,7 +66,8 @@
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** две ветки от одного builder компилируются в разные SQL, а исходный `toIR()` не меняется.
+**How mastery will be verified:** две ветки от одного builder компилируются в разные SQL, а исходный `toIR()` не
+меняется.
 
 ## 5. SourceMap и alias environment
 
@@ -62,13 +75,15 @@
 
 **Why it matters:** после join API должен разрешать только реальные aliases и колонки соответствующей таблицы.
 
-**Where it appears in this project:** будущий builder поверх существующих `TableDef`, `JoinIR` и qualified `Column` expressions.
+**Where it appears in this project:** будущий builder поверх существующих `TableDef`, `JoinIR` и qualified `Column`
+expressions.
 
 **Prerequisites:** mapped types, indexed access, literal types, `keyof`.
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** после двух join доступны ровно три aliases; неизвестный alias и неизвестная колонка дают compile-time errors.
+**How mastery will be verified:** после двух join доступны ровно три aliases; неизвестный alias и неизвестная колонка
+дают compile-time errors.
 
 ## 6. Рост generic context через intersection
 
@@ -82,13 +97,15 @@
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** пользователь выводит тип после двух joins, объясняет, почему union неверен, и обрабатывает alias collision явно.
+**How mastery will be verified:** пользователь выводит тип после двух joins, объясняет, почему union неверен, и
+обрабатывает alias collision явно.
 
 ## 7. ExpressionBuilder с контекстом sources
 
 **Concept:** Smart constructors, чьи допустимые column references зависят от текущего SourceMap.
 
-**Why it matters:** глобальный `col(table, name)` не выражает query-local aliases; join callbacks должны видеть только sources конкретной query chain.
+**Why it matters:** глобальный `col(table, name)` не выражает query-local aliases; join callbacks должны видеть только
+sources конкретной query chain.
 
 **Where it appears in this project:** адаптация `src/query/expressions.ts` и `predicates.ts` в future builder callbacks.
 
@@ -96,7 +113,8 @@
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** `b.col('u', 'id')` и `b.col('p', 'id')` имеют правильные types/runtime aliases, а invalid references не компилируются.
+**How mastery will be verified:** `b.col('u', 'id')` и `b.col('p', 'id')` имеют правильные types/runtime aliases, а
+invalid references не компилируются.
 
 ## 8. Projection inference
 
@@ -110,21 +128,26 @@
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** type-level examples для нескольких value types и runtime query с переименованными projection keys.
+**How mastery will be verified:** type-level examples для нескольких value types и runtime query с переименованными
+projection keys.
 
 ## 9. SQL aliases и identifier safety
 
-**Concept:** Table alias — SQL identifier из контролируемого schema/builder context; literal value — параметр через placeholder.
+**Concept:** Table alias — SQL identifier из контролируемого schema/builder context; literal value — параметр через
+placeholder.
 
-**Why it matters:** aliases устраняют неоднозначность joined columns, а разделение identifier/value защищает parameterization boundary.
+**Why it matters:** aliases устраняют неоднозначность joined columns, а разделение identifier/value защищает
+parameterization boundary.
 
-**Where it appears in this project:** `Dialect.quoteIdentifier`, `compileExpr`, `compileSelect`, future `Db.selectFrom(table, alias)`.
+**Where it appears in this project:** `Dialect.quoteIdentifier`, `compileExpr`, `compileSelect`, future
+`Db.selectFrom(table, alias)`.
 
 **Prerequisites:** SQL identifiers, placeholders, injection model.
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** пользователь предсказывает qualified SQL, params и показывает, почему placeholder нельзя использовать вместо identifier.
+**How mastery will be verified:** пользователь предсказывает qualified SQL, params и показывает, почему placeholder
+нельзя использовать вместо identifier.
 
 ## 10. INNER JOIN semantics
 
@@ -142,17 +165,20 @@
 
 ## 11. LEFT JOIN source nullability
 
-**Concept:** При отсутствии match все projected columns правой source становятся nullable независимо от declared column nullability.
+**Concept:** При отсутствии match все projected columns правой source становятся nullable независимо от declared column
+nullability.
 
 **Why it matters:** иначе public result type обещает значение там, где DB возвращает `NULL`.
 
-**Where it appears in this project:** future SourceMap metadata и `ExpressionBuilder.col`; `JoinIR.kind` уже поддерживает `left`.
+**Where it appears in this project:** future SourceMap metadata и `ExpressionBuilder.col`; `JoinIR.kind` уже
+поддерживает `left`.
 
 **Prerequisites:** INNER JOIN, conditional types, SQL NULL.
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** compile-time type `T | null` и runtime unmatched row совпадают; inner-joined source остаётся `T`.
+**How mastery will be verified:** compile-time type `T | null` и runtime unmatched row совпадают; inner-joined source
+остаётся `T`.
 
 ## 12. Cardinality contracts
 
@@ -160,7 +186,7 @@
 
 **Why it matters:** вызывающий код должен различать нормальное отсутствие данных и нарушение uniqueness/invariant.
 
-**Where it appears in this project:** `NotFoundError`, `TooManyError`, future `ExecutableQuery` terminals.
+**Where it appears in this project:** `NotFoundError`, `TooManyError`, future `ExecutableUpdate` terminals.
 
 **Prerequisites:** Effect typed errors, array boundaries.
 
@@ -170,17 +196,20 @@
 
 ## 13. Effect execution boundary
 
-**Concept:** Query construction создаёт data; terminal method создаёт lazy Effect; runtime запускается только interpreter.
+**Concept:** Query construction создаёт data; terminal method создаёт lazy Effect; runtime запускается только
+interpreter.
 
-**Why it matters:** builder остаётся testable без Driver, dependencies остаются explicit, а ошибки/ресурсы контролирует Effect runtime.
+**Why it matters:** builder остаётся testable без Driver, dependencies остаются explicit, а ошибки/ресурсы контролирует
+Effect runtime.
 
-**Where it appears in this project:** `typed-run.ts`, `typed-stream.ts`, Driver service и future `ExecutableQuery`.
+**Where it appears in this project:** `typed-run.ts`, `typed-stream.ts`, Driver service и future `ExecutableUpdate`.
 
 **Prerequisites:** `Effect<A,E,R>`, `Effect.gen`, Layer/provide.
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** fake Driver counter остаётся 0 после построения query/effect и становится 1 только после `runPromise`/test runtime.
+**How mastery will be verified:** fake Driver counter остаётся 0 после построения query/effect и становится 1 только
+после `runPromise`/test runtime.
 
 ## 14. Streaming и backpressure
 
@@ -188,33 +217,39 @@
 
 **Why it matters:** тип `Stream` сам по себе не мешает producer сначала загрузить весь результат.
 
-**Where it appears in this project:** `Driver.executeStream`, SQLite iterator, PGlite cursor/FETCH, `streamFromSelect`, E2.7.
+**Where it appears in this project:** `Driver.executeStream`, SQLite iterator, PGlite cursor/FETCH, `streamFromSelect`,
+E2.7.
 
 **Prerequisites:** Effect execution, iterators/cursors, resource finalization.
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** source-code path не использует `executeRaw`/collect, миллионный fold даёт точный result, а пользователь объясняет heap retention и RSS limits.
+**How mastery will be verified:** source-code path не использует `executeRaw`/collect, миллионный fold даёт точный
+result, а пользователь объясняет heap retention и RSS limits.
 
 ## 15. Codec и runtime validation boundary
 
-**Concept:** TypeScript types исчезают; raw SQL values должны быть decoded/validated, а domain values encoded с column metadata.
+**Concept:** TypeScript types исчезают; raw SQL values должны быть decoded/validated, а domain values encoded с column
+metadata.
 
 **Why it matters:** `as R` не доказывает форму/тип данных, особенно между SQLite и PostgreSQL representations.
 
-**Where it appears in this project:** `codec.ts`, `ColumnDef._codec`, unchecked assertions в typed run/stream; future builder/Repository.
+**Where it appears in this project:** `codec.ts`, `ColumnDef._codec`, unchecked assertions в typed run/stream; future
+builder/Repository.
 
 **Prerequisites:** schemas/codecs, unknown data, dialect representations.
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** boolean/date round-trip на двух backends и malformed raw row даёт typed decoding error вместо ложного domain value.
+**How mastery will be verified:** boolean/date round-trip на двух backends и malformed raw row даёт typed decoding error
+вместо ложного domain value.
 
 ## 16. Write-builder FSM
 
 **Concept:** INSERT/UPDATE/DELETE имеют собственные более короткие state machines.
 
-**Why it matters:** invalid sequences вроде execute before values/set и неверные write values должны быть невозможны до SQL execution.
+**Why it matters:** invalid sequences вроде execute before values/set и неверные write values должны быть невозможны до
+SQL execution.
 
 **Where it appears in this project:** existing Insert/Update/Delete IR/statements; future fluent write API.
 
@@ -222,11 +257,13 @@
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** valid flows исполняются, invalid method sequences/type values не компилируются, returning result inferred exactly.
+**How mastery will be verified:** valid flows исполняются, invalid method sequences/type values не компилируются,
+returning result inferred exactly.
 
 ## 17. Repository boundary
 
-**Concept:** Repository — domain-oriented persistence facade, вводимый при повторяющихся use cases/mapping, а не заранее.
+**Concept:** Repository — domain-oriented persistence facade, вводимый при повторяющихся use cases/mapping, а не
+заранее.
 
 **Why it matters:** отделяет raw rows/query mechanics от domain contracts и делает not-found/validation behavior явным.
 
@@ -236,11 +273,13 @@
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** один concrete repository, затем обобщение на основании второго; tests проверяют domain behavior, не forwarding.
+**How mastery will be verified:** один concrete repository, затем обобщение на основании второго; tests проверяют domain
+behavior, не forwarding.
 
 ## 18. Effect Request batching
 
-**Concept:** Concurrent logical requests группируются в один physical query, после чего resolver распределяет rows каждому entry.
+**Concept:** Concurrent logical requests группируются в один physical query, после чего resolver распределяет rows
+каждому entry.
 
 **Why it matters:** устраняет N+1 без изменения публичного per-key contract.
 
@@ -250,11 +289,13 @@
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** один SQL для нескольких concurrent requests, точная раздача групп и `[]` для отсутствующей key; sequential case объяснён отдельно.
+**How mastery will be verified:** один SQL для нескольких concurrent requests, точная раздача групп и `[]` для
+отсутствующей key; sequential case объяснён отдельно.
 
 ## 19. Scope, transaction и savepoint
 
-**Concept:** Transaction владеет connection в Scope; nested transaction использует savepoint; finalizers работают на success/failure/interruption.
+**Concept:** Transaction владеет connection в Scope; nested transaction использует savepoint; finalizers работают на
+success/failure/interruption.
 
 **Why it matters:** multi-write use cases должны быть atomic и не протекать ресурсами.
 
@@ -264,11 +305,13 @@
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** two-write failure rolls back, nested savepoint сохраняет outer work, interruption освобождает resource.
+**How mastery will be verified:** two-write failure rolls back, nested savepoint сохраняет outer work, interruption
+освобождает resource.
 
 ## 20. Identity Map и Unit of Work
 
-**Concept:** Identity Map обеспечивает одну identity entity на key внутри scope; Unit of Work собирает changes и commit-ит их одной транзакцией.
+**Concept:** Identity Map обеспечивает одну identity entity на key внутри scope; Unit of Work собирает changes и
+commit-ит их одной транзакцией.
 
 **Why it matters:** нужны только после появления domain entities и coordinated changes; раньше это лишняя сложность.
 
@@ -278,7 +321,8 @@
 
 **Expected mastery:** 3.
 
-**How mastery will be verified:** repeated find identity внутри scope, isolation между scopes, ordered commit и rollback при failure.
+**How mastery will be verified:** repeated find identity внутри scope, isolation между scopes, ordered commit и rollback
+при failure.
 
 ## 21. Versioned migrations
 
@@ -292,13 +336,15 @@
 
 **Expected mastery:** 4.
 
-**How mastery will be verified:** clean DB migrate, repeated no-op, ordered dependencies, checksum mismatch и rollback failed migration.
+**How mastery will be verified:** clean DB migrate, repeated no-op, ordered dependencies, checksum mismatch и rollback
+failed migration.
 
 ## 22. Public package surface
 
 **Concept:** Явный список поддерживаемых exports и работоспособный built consumer contract.
 
-**Why it matters:** внутренние source imports могут работать, когда опубликованный package сломан. Сейчас exports ожидают `dist/index.*`, но source entrypoint отсутствует.
+**Why it matters:** внутренние source imports могут работать, когда опубликованный package сломан. Сейчас exports
+ожидают `dist/index.*`, но source entrypoint отсутствует.
 
 **Where it appears in this project:** `package.json`, `tsconfig.build.json`, будущий `src/index.ts`.
 
@@ -306,4 +352,5 @@
 
 **Expected mastery:** 3.
 
-**How mastery will be verified:** clean `pnpm build` и временный внешний consumer импортируют JS и declarations только через public package name.
+**How mastery will be verified:** clean `pnpm build` и временный внешний consumer импортируют JS и declarations только
+через public package name.
