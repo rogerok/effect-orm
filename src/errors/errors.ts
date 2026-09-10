@@ -68,6 +68,10 @@ export class CodecError extends Data.TaggedError('CodecError')<{
   readonly value: unknown;
 }> {}
 
+export class PrimaryKeyError extends Data.TaggedError('PrimaryKeyError')<{
+  readonly cause: unknown;
+}> {}
+
 // Driver-level errors. NotFound/TooMany возникают выше, на уровне execute helpers
 export type DriverError =
   | CodecError
