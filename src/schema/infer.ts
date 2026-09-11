@@ -16,7 +16,7 @@ export type InferColumn<C extends ColumnDef<SqlType, boolean, boolean>> =
 
 // oxlint-disable-next-line typescript/no-explicit-any
 export type InferRow<T extends TableDef<string, any>> = {
-  [K in keyof T['_columns']]: InferColumn<T['_columns'][K]>;
+  [K in keyof T['_columns'] & string]: InferColumn<T['_columns'][K]>;
 };
 
 // oxlint-disable-next-line typescript/no-explicit-any

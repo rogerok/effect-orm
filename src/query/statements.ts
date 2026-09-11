@@ -61,12 +61,12 @@ export type InferReturning<
   T extends AnyTableDef,
   R extends ReturningOption<T> | undefined,
 > = R extends '*'
-  ? InferRow<T>
+  ? ReadonlyArray<InferRow<T>>
   : R extends ReadonlyArray<infer K>
     ? [K] extends [keyof InferRow<T>]
-      ? Pick<InferRow<T>, K>
+      ? ReadonlyArray<Pick<InferRow<T>, K>>
       : never
-    : { readonly affectedRows: number };
+    : { affectedRows: number };
 
 export const insert = <
   T extends AnyTableDef,

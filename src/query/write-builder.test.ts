@@ -52,7 +52,7 @@ describe('write builder', () => {
   it('typeof returning', () => {
     expectTypeOf<
       InferReturning<typeof users, readonly ['id', 'name']>
-    >().toEqualTypeOf<{ id: number; name: string }>();
+    >().toEqualTypeOf<ReadonlyArray<{ id: number; name: string }>>();
   });
 
   it('no execute property until values() called', () => {

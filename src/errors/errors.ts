@@ -7,7 +7,11 @@ export class DbError extends Data.TaggedError('DbError')<{
 }> {}
 
 export class NotFoundError extends Data.TaggedError('NotFoundError')<{
-  sql: string;
+  sql?: string;
+}> {}
+
+export class ReturningError extends Data.TaggedError('ReturningError')<{
+  cause: unknown;
 }> {}
 
 export class TooManyError extends Data.TaggedError('TooManyError')<{

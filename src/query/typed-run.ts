@@ -19,17 +19,11 @@ export type StatementResult<S> =
   S extends Select<infer R>
     ? ReadonlyArray<R>
     : S extends Insert<infer R>
-      ? R extends AffectedRows
-        ? R
-        : ReadonlyArray<R>
+      ? R
       : S extends Update<infer R>
-        ? R extends AffectedRows
-          ? R
-          : ReadonlyArray<R>
+        ? R
         : S extends Delete<infer R>
-          ? R extends AffectedRows
-            ? R
-            : ReadonlyArray<R>
+          ? R
           : never;
 
 interface RunResult<S> {
