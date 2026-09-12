@@ -15,18 +15,23 @@ import type {
   SourceMap,
 } from '#query/expression-builder.js';
 import type { Expr, Pred, RowFromSelection, Select } from '#query/typed-ast.js';
+import type { ColumnDef } from '#schema/columns.js';
 import type { InferRow } from '#schema/infer.js';
 import type { AnyTableDef } from '#schema/table.js';
 
 import {
   type DriverError,
   NotFoundError,
+  QueryInvariantError,
   TooManyError,
 } from '#errors/errors.js';
 import { makeExpressionBuilder } from '#query/expression-builder.js';
 import { run, runWithSql } from '#query/typed-run.js';
 
-type ExecutableState = { readonly columns: SelectIR['columns'] } & BuilderState;
+type ExecutableState = {
+  readonly codecFactories: Record<string, NonNullable<ColumnDef['_codec']>>;
+  readonly columns: SelectIR['columns'];
+} & BuilderState;
 
 /*
 Использую run, runWithsql т.к. данный функционал уже заменяет вызов драйвера
@@ -41,22 +46,24 @@ export class ExecutableQuery<R> {
   constructor(private readonly state: ExecutableState) {}
 
   toIR(): Select<R> {
+    const { sources: __, codecFactories: ___, ...rest } = this.state;
+
     return {
       _tag: 'Select',
-      ...this.state,
+      ...rest,
     };
   }
 
   execute(): Effect.Effect<ReadonlyArray<R>, DriverError, Driver> {
     const ir = this.toIR();
 
-    return run(ir);
+    return run(ir, this.state.codecFactories);
   }
 
   executeOne(): Effect.Effect<Option.Option<R>, DriverError, Driver> {
     const ir = this.toIR();
 
-    return run(ir).pipe(Effect.map(Array.head));
+    return run(ir, this.state.codecFactories).pipe(Effect.map(Array.head));
   }
 
   executeOneOrThrow(): Effect.Effect<
@@ -65,9 +72,10 @@ export class ExecutableQuery<R> {
     Driver
   > {
     const ir = this.toIR();
+    const codecFactories = this.state.codecFactories;
 
     return Effect.gen(function* () {
-      const { sql, result } = yield* runWithSql(ir);
+      const { sql, result } = yield* runWithSql(ir, codecFactories);
 
       if (result[0] === undefined) {
         return yield* new NotFoundError({ sql });
@@ -86,6 +94,7 @@ interface BuilderState {
   readonly from: { readonly alias: string; readonly table: string };
   readonly joins: ReadonlyArray<JoinIR>;
   readonly orderBy: ReadonlyArray<OrderByIR>;
+  readonly sources: Readonly<Record<string, AnyTableDef>>;
   readonly limit?: number;
   readonly offset?: number;
   readonly where?: PredIR;
@@ -130,6 +139,10 @@ export class SelectQueryBuilder<S extends SourceMap> {
 
     return new SelectQueryBuilder<{ [K in A]: Source<T, false> } & S>({
       ...this.state,
+      sources: {
+        ...this.state.sources,
+        [alias]: table,
+      },
       joins: [
         ...this.state.joins,
         { kind: 'inner', table: table._name, alias, on: onPred },
@@ -147,6 +160,10 @@ export class SelectQueryBuilder<S extends SourceMap> {
 
     return new SelectQueryBuilder<{ [K in A]: Source<T, true> } & S>({
       ...this.state,
+      sources: {
+        ...this.state.sources,
+        [alias]: table,
+      },
       joins: [
         ...this.state.joins,
         { kind: 'left', table: table._name, alias, on: onPred },
@@ -196,14 +213,48 @@ export class SelectQueryBuilder<S extends SourceMap> {
       alias,
     }));
 
-    return new ExecutableQuery({ ...this.state, columns });
+    const codecFactories = columns.reduce<
+      Record<string, NonNullable<ColumnDef['_codec']>>
+    >((acc, { expr, alias }) => {
+      if (expr._tag !== 'Column' || expr.table === undefined) {
+        return acc;
+      }
+      const codec =
+        this.state.sources[expr.table]?._columns[expr.name]?.['_codec'];
+
+      if (codec !== undefined) {
+        acc[alias] = codec;
+      }
+
+      return acc;
+    }, {});
+
+    return new ExecutableQuery({ ...this.state, columns, codecFactories });
   }
 
   selectAll(
     // использую  type level проверку, вместо runtime проверки
     this: IsSingleSource<S> extends true ? SelectQueryBuilder<S> : never,
   ): ExecutableQuery<InferRow<S[keyof S]['table']>> {
-    return new ExecutableQuery({ ...this.state, columns: '*' });
+    const cols = this.state.sources[this.state.from.alias]?._columns;
+
+    if (cols === undefined) {
+      throw new QueryInvariantError({
+        cause: `Query builder invariant violated: source alias "${this.state.from.alias}" from FROM is missing in sources.`,
+      });
+    }
+
+    const codecFactories = Object.entries(cols).reduce<
+      Record<string, NonNullable<ColumnDef['_codec']>>
+    >((acc, [key, col]) => {
+      if (col._codec) {
+        acc[key] = col._codec;
+      }
+
+      return acc;
+    }, {});
+
+    return new ExecutableQuery({ ...this.state, columns: '*', codecFactories });
   }
 }
 
@@ -215,4 +266,7 @@ export const selectFrom = <T extends AnyTableDef, A extends string>(
     from: { table: table._name, alias },
     joins: [],
     orderBy: [],
+    sources: {
+      [alias]: table,
+    },
   });

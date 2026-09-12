@@ -76,6 +76,12 @@ export class PrimaryKeyError extends Data.TaggedError('PrimaryKeyError')<{
   readonly cause: unknown;
 }> {}
 
+export class QueryInvariantError extends Data.TaggedError(
+  'QueryInvariantError',
+)<{
+  readonly cause: unknown;
+}> {}
+
 // Driver-level errors. NotFound/TooMany возникают выше, на уровне execute helpers
 export type DriverError =
   | CodecError
