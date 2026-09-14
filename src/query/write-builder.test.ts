@@ -10,7 +10,7 @@ import { PgDialect } from '#dialect.js';
 import { Driver } from '#drivers/driver.js';
 import { selectFrom } from '#query/builder.js';
 import { insertInto } from '#query/write-builders.js';
-import { integer, text, withDefault } from '#schema/columns.js';
+import { bool, integer, text, withDefault } from '#schema/columns.js';
 import { table } from '#schema/table.js';
 
 import * as SqliteDriver from '../drivers/sqlite.js';
@@ -169,6 +169,33 @@ describe('in memory test', () => {
         { id: 1, name: 'John' },
         { name: 'Ann', id: 2 },
       ]);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect('round trip', () =>
+    Effect.gen(function* () {
+      const db = yield* Driver;
+      const id = db.dialect.quoteIdentifier;
+      const ph = db.dialect.placeholder;
+      const mapCol = db.dialect.mapColumnType;
+      const tableId = id('flags');
+
+      const flags = table('flags', {
+        active: bool(),
+      });
+
+      yield* db.executeRaw(
+        `CREATE TABLE ${tableId} (${id('active')} ${mapCol('integer', {})})`,
+        [],
+      );
+
+      const insertResult = yield* insertInto(flags)
+        .values([{ active: true }])
+        .execute();
+
+      const rows = yield* selectFrom(flags, 'f').selectAll().execute();
+
+      expect(rows).toEqual([{ active: true }]);
     }).pipe(Effect.provide(layer)),
   );
 });

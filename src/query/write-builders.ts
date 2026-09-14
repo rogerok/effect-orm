@@ -16,14 +16,17 @@ import { insert, update as updateStmt } from '#query/statements.js';
 import { run } from '#query/typed-run.js';
 
 export class ExecutableInsert<T extends AnyTableDef, R> {
-  constructor(private readonly stmt: Insert<R>) {}
+  constructor(
+    private readonly stmt: Insert<R>,
+    private readonly table: T,
+  ) {}
 
   toIR(): Insert<R> {
     return this.stmt;
   }
 
   execute(): Effect.Effect<StatementResult<Insert<R>>, DriverError, Driver> {
-    return run(this.toIR());
+    return run({ stmt: this.toIR(), table: this.table });
   }
 
   returning<const Cols extends ReadonlyArray<keyof InferRow<T> & string>>(
@@ -34,7 +37,7 @@ export class ExecutableInsert<T extends AnyTableDef, R> {
       returning: cols.map((c) => ({ expr: { _tag: 'Column', name: c } })),
     };
 
-    return new ExecutableInsert<T, InferReturning<T, Cols>>(ir);
+    return new ExecutableInsert<T, InferReturning<T, Cols>>(ir, this.table);
   }
 }
 
@@ -50,7 +53,7 @@ export class InsertQueryBuilder<T extends AnyTableDef> {
   ): ExecutableInsert<T, AffectedRows> {
     const stmt = insert(this.table, rows);
 
-    return new ExecutableInsert<T, AffectedRows>(stmt);
+    return new ExecutableInsert<T, AffectedRows>(stmt, this.table);
   }
 }
 
@@ -59,14 +62,17 @@ export const insertInto = <T extends AnyTableDef>(
 ): InsertQueryBuilder<T> => InsertQueryBuilder.__make(table);
 
 export class ExecutableUpdate<T extends AnyTableDef, R> {
-  constructor(private readonly stmt: Update<R>) {}
+  constructor(
+    private readonly stmt: Update<R>,
+    private readonly table: T,
+  ) {}
 
   toIR(): Update<R> {
     return this.stmt;
   }
 
   execute(): Effect.Effect<StatementResult<Update<R>>, DriverError, Driver> {
-    return run(this.toIR());
+    return run({ stmt: this.toIR(), table: this.table });
   }
 
   returning<const Cols extends ReadonlyArray<keyof InferRow<T> & string>>(
@@ -77,7 +83,7 @@ export class ExecutableUpdate<T extends AnyTableDef, R> {
       returning: cols.map((c) => ({ expr: { _tag: 'Column', name: c } })),
     };
 
-    return new ExecutableUpdate<T, InferReturning<T, Cols>>(ir);
+    return new ExecutableUpdate<T, InferReturning<T, Cols>>(ir, this.table);
   }
 
   where(
@@ -88,12 +94,15 @@ export class ExecutableUpdate<T extends AnyTableDef, R> {
     const eb = makeExpressionBuilder<{ [K in T['_name']]: Source<T, false> }>();
     const newPred = pred(eb);
 
-    return new ExecutableUpdate<T, R>({
-      ...this.stmt,
-      where: this.stmt.where
-        ? { _tag: 'And', preds: [this.stmt.where, newPred] }
-        : newPred,
-    });
+    return new ExecutableUpdate<T, R>(
+      {
+        ...this.stmt,
+        where: this.stmt.where
+          ? { _tag: 'And', preds: [this.stmt.where, newPred] }
+          : newPred,
+      },
+      this.table,
+    );
   }
 }
 
@@ -107,7 +116,7 @@ export class UpdateQueryBuilder<T extends AnyTableDef> {
   set(patch: InferUpdate<T>): ExecutableUpdate<T, AffectedRows> {
     const stmt = updateStmt(this.table, patch);
 
-    return new ExecutableUpdate<T, AffectedRows>(stmt);
+    return new ExecutableUpdate<T, AffectedRows>(stmt, this.table);
   }
 }
 
@@ -157,7 +166,7 @@ export class ExecutableDelete<T extends AnyTableDef, R> {
   }
 
   execute(): Effect.Effect<StatementResult<Delete<R>>, DriverError, Driver> {
-    return run(this.toIR());
+    return run({ stmt: this.toIR(), table: this.table });
   }
 }
 

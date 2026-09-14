@@ -13,8 +13,8 @@ const users = table('users', {
 });
 
 const program = Effect.gen(function* () {
-  const adults = yield* run(
-    Q.select(users, ['id', 'name'] as const, {
+  const adults = yield* run({
+    stmt: Q.select(users, ['id', 'name'] as const, {
       where: Q.and(
         Q.gt(Q.col(users, 'age'), Q.lit(18)),
         Q.isNotNull(Q.col(users, 'email')),
@@ -22,13 +22,17 @@ const program = Effect.gen(function* () {
       orderBy: [{ expr: Q.col(users, 'name'), dir: 'asc' }],
       limit: 100,
     }),
-  );
+  });
 
-  const [created] = yield* run(
-    Q.insert(users, [{ name: 'Name', email: 'example@mail.com', age: 30 }], {
-      returning: ['id'] as const,
-    }),
-  );
+  const [created] = yield* run({
+    stmt: Q.insert(
+      users,
+      [{ name: 'Name', email: 'example@mail.com', age: 30 }],
+      {
+        returning: ['id'] as const,
+      },
+    ),
+  });
 
   if (created) {
     return { adults, createdId: created.id };

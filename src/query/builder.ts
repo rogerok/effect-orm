@@ -57,13 +57,15 @@ export class ExecutableQuery<R> {
   execute(): Effect.Effect<ReadonlyArray<R>, DriverError, Driver> {
     const ir = this.toIR();
 
-    return run(ir, this.state.codecFactories);
+    return run({ stmt: ir, codecFactories: this.state.codecFactories });
   }
 
   executeOne(): Effect.Effect<Option.Option<R>, DriverError, Driver> {
     const ir = this.toIR();
 
-    return run(ir, this.state.codecFactories).pipe(Effect.map(Array.head));
+    return run({ stmt: ir, codecFactories: this.state.codecFactories }).pipe(
+      Effect.map(Array.head),
+    );
   }
 
   executeOneOrThrow(): Effect.Effect<
@@ -75,7 +77,7 @@ export class ExecutableQuery<R> {
     const codecFactories = this.state.codecFactories;
 
     return Effect.gen(function* () {
-      const { sql, result } = yield* runWithSql(ir, codecFactories);
+      const { sql, result } = yield* runWithSql({ stmt: ir, codecFactories });
 
       if (result[0] === undefined) {
         return yield* new NotFoundError({ sql });

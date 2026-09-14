@@ -15,6 +15,8 @@ import type { ColumnDef } from '#schema/columns.js';
 import { compile } from '#compiler/compiler.js';
 import { Driver } from '#drivers/driver.js';
 import { CodecError } from '#errors/errors.js';
+import type { AnyTableDef } from '#schema/table.js';
+import { lit } from '#query/expressions.js';
 
 export type AffectedRows = { readonly affectedRows: number };
 
@@ -34,13 +36,56 @@ interface RunResult<S> {
   readonly sql: string;
 }
 
-export const runWithSql = <S extends Statement<unknown>>(
-  stmt: S,
-  codecFactories?: Readonly<Record<string, NonNullable<ColumnDef['_codec']>>>,
-): Effect.Effect<RunResult<S>, DriverError, Driver> =>
+type RunOptions<S extends Statement<unknown>, T extends AnyTableDef> = {
+  readonly stmt: S;
+  readonly codecFactories?:
+    Readonly<Record<string, NonNullable<ColumnDef['_codec']>>> | undefined;
+  readonly table?: T | undefined;
+};
+
+export const runWithSql = <
+  S extends Statement<unknown>,
+  T extends AnyTableDef,
+>({
+  stmt,
+  table,
+  codecFactories,
+}: RunOptions<S, T>): Effect.Effect<RunResult<S>, DriverError, Driver> =>
   Effect.gen(function* () {
     const driver = yield* Driver;
-    const { sql, params } = compile(stmt, driver.dialect);
+    const writeCodec: Record<string, Codec<unknown, unknown>> = {};
+    let preparedStm: Statement<unknown> = stmt;
+
+    if (stmt._tag === 'Insert' && table !== undefined) {
+      for (const [k, v] of Object.entries(table._columns)) {
+        if (v._codec) {
+          writeCodec[k] = v._codec(driver.dialect.id);
+        }
+      }
+
+      const encodedRows: Array<InsertIR['rows'][number]> = [];
+
+      for (const row of stmt.rows) {
+        const encodedRow = { ...row };
+
+        for (const [k, v] of Object.entries(row)) {
+          if (v._tag === 'Literal' && v.value !== null) {
+            const codec = writeCodec[k];
+            if (codec) {
+              encodedRow[k] = yield* Effect.try({
+                try: () => lit(codec.encode(v.value)),
+                catch: (cause) =>
+                  new CodecError({ cause, value: v.value, column: k }),
+              });
+            }
+          }
+        }
+
+        encodedRows.push(encodedRow);
+      }
+    }
+
+    const { sql, params } = compile(preparedStm, driver.dialect);
 
     const raw = yield* driver.executeRaw(sql, params);
 
@@ -91,8 +136,9 @@ export const runWithSql = <S extends Statement<unknown>>(
     return { result, sql };
   });
 
-export const run = <S extends Statement<unknown>>(
-  stmt: S,
-  codecFactories?: Readonly<Record<string, NonNullable<ColumnDef['_codec']>>>,
-): Effect.Effect<StatementResult<S>, DriverError, Driver> =>
-  runWithSql(stmt, codecFactories).pipe(Effect.map((r) => r.result));
+export const run = <S extends Statement<unknown>, T extends AnyTableDef>({
+  stmt,
+  table,
+  codecFactories,
+}: RunOptions<S, T>): Effect.Effect<StatementResult<S>, DriverError, Driver> =>
+  runWithSql({ stmt, table, codecFactories }).pipe(Effect.map((r) => r.result));

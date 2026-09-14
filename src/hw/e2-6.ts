@@ -30,11 +30,11 @@ export class GetUserById extends Request.TaggedClass('GetUserById')<
 export const UserByIdResolver = RequestResolver.make<GetUserById>((entries) =>
   Effect.gen(function* () {
     const ids = entries.map((entry) => entry.request.id);
-    const users = yield* run(
-      Q.selectAll(usersTable, {
+    const users = yield* run({
+      stmt: Q.selectAll(usersTable, {
         where: Q.isIn(Q.col(usersTable, 'id'), ids.map(Q.lit)),
       }),
-    ).pipe(Effect.provideContext(entries[0].context));
+    }).pipe(Effect.provideContext(entries[0].context));
 
     const byId = new Map(users.map((u) => [u.id, u]));
 
@@ -73,11 +73,11 @@ export const PostsByUserIdResolver = RequestResolver.make<GetPostsByUserId>(
   (entries) =>
     Effect.gen(function* () {
       const ids = entries.map((entry) => entry.request.userId);
-      const posts = yield* run(
-        Q.selectAll(postsTable, {
+      const posts = yield* run({
+        stmt: Q.selectAll(postsTable, {
           where: Q.isIn(Q.col(postsTable, 'userId'), ids.map(Q.lit)),
         }),
-      ).pipe(Effect.provideContext(entries[0].context));
+      }).pipe(Effect.provideContext(entries[0].context));
 
       const byId = posts.reduce<Record<number, Post[]>>((acc, post) => {
         const userPosts = acc[post.userId];
