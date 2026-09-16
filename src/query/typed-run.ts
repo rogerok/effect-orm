@@ -8,6 +8,7 @@ import type {
   Predicate,
   UpdateIR,
 } from '#compiler/ir.js';
+import type { DialectId } from '#dialect.js';
 import type { DriverError } from '#errors/errors.js';
 import type {
   Delete,
@@ -16,7 +17,7 @@ import type {
   Statement,
   Update,
 } from '#query/typed-ast.js';
-import type { ColumnDef } from '#schema/columns.js';
+import type { ColumnDef, SqlType } from '#schema/columns.js';
 import type { AnyTableDef } from '#schema/table.js';
 
 import { compile } from '#compiler/compiler.js';
@@ -51,6 +52,152 @@ type RunOptions<S extends Statement<unknown>, T extends AnyTableDef> = {
   readonly table?: T | undefined;
 };
 
+const getCodec = (
+  expr: Expr,
+  sources: Readonly<Record<string, AnyTableDef>>,
+  dialectId: DialectId,
+) => {
+  if (sources && expr._tag === 'Column' && expr.table) {
+    return sources[expr.table]?._columns[expr.name]?._codec?.(dialectId);
+  }
+
+  return undefined;
+};
+
+const encodeLiteral = (
+  col: Expr,
+  litExpr: Expr,
+  sources: Readonly<Record<string, AnyTableDef>> | undefined,
+  dialectId: DialectId,
+) =>
+  Effect.gen(function* () {
+    if (
+      litExpr._tag === 'Literal' &&
+      col._tag === 'Column' &&
+      sources !== undefined
+    ) {
+      if (litExpr.value === null) return litExpr;
+      const codec = getCodec(col, sources, dialectId);
+
+      if (codec) {
+        const encoder = codec.encode as (v: unknown) => unknown;
+        return yield* Effect.try({
+          try: () => lit(encoder(litExpr.value)),
+          catch: (cause) =>
+            new CodecError({
+              column: col?.name,
+              value: litExpr.value,
+              cause,
+            }),
+        });
+      }
+    }
+
+    return litExpr;
+  });
+
+const prepareCodecs = <
+  Cols extends Record<string, ColumnDef<SqlType, boolean, boolean>>,
+>(
+  cols: Cols,
+  dialectId: DialectId,
+) => {
+  const writeCodec: Record<string, AnyCodec> = {};
+
+  for (const [k, v] of Object.entries(cols)) {
+    if (v._codec) {
+      writeCodec[k] = v._codec(dialectId);
+    }
+  }
+
+  return writeCodec;
+};
+
+const encodePredicate = (
+  pred: Predicate,
+  sources: Readonly<Record<string, AnyTableDef>> | undefined,
+  dialectId: DialectId,
+): Effect.Effect<Predicate, CodecError> =>
+  Effect.gen(function* () {
+    if (pred._tag === 'And' || pred._tag === 'Or') {
+      const preds = yield* Effect.forEach(pred.preds, (p) =>
+        encodePredicate(p, sources, dialectId),
+      );
+      return pred._tag === 'And' ? and(...preds) : or(...preds);
+    }
+
+    if (pred._tag === 'Not') {
+      const p = yield* encodePredicate(pred.pred, sources, dialectId);
+      return not(p);
+    }
+
+    if (
+      pred._tag === 'Gte' ||
+      pred._tag === 'Gt' ||
+      pred._tag === 'Lte' ||
+      pred._tag === 'Lt' ||
+      pred._tag === 'Neq' ||
+      pred._tag === 'Eq'
+    ) {
+      const left = yield* encodeLiteral(
+        pred.right,
+        pred.left,
+        sources,
+        dialectId,
+      );
+      const right = yield* encodeLiteral(
+        pred.left,
+        pred.right,
+        sources,
+        dialectId,
+      );
+
+      return { ...pred, left, right };
+    }
+
+    if (pred._tag === 'In') {
+      const values = yield* Effect.forEach(pred.values, (expr) =>
+        encodeLiteral(pred.left, expr, sources, dialectId),
+      );
+
+      return { ...pred, values };
+    }
+
+    if (pred._tag === 'Between' && pred.expr._tag === 'Column') {
+      const min = yield* encodeLiteral(pred.expr, pred.min, sources, dialectId);
+      const max = yield* encodeLiteral(pred.expr, pred.max, sources, dialectId);
+
+      return between(pred.expr, min, max);
+    }
+
+    return pred;
+  });
+
+const encodeRow = (
+  row: Record<string, Expr>,
+  writeCodec: Record<string, AnyCodec>,
+) =>
+  Effect.gen(function* () {
+    const encodedRow = { ...row };
+
+    for (const [k, v] of Object.entries(row)) {
+      if (v._tag === 'Literal' && v.value !== null) {
+        const codec = writeCodec[k];
+        if (codec) {
+          const encoder = codec.encode as (v: unknown) => unknown;
+
+          encodedRow[k] = yield* Effect.try({
+            try: () => lit(encoder(v.value)),
+            catch: (cause) =>
+              new CodecError({ cause, value: v.value, column: k }),
+          });
+        }
+      }
+    }
+
+    return encodedRow;
+  });
+
 export const runWithSql = <
   S extends Statement<unknown>,
   T extends AnyTableDef,
@@ -64,127 +211,81 @@ export const runWithSql = <
     const driver = yield* Driver;
     let preparedStm: Statement<unknown> = stmt;
 
-    const getCodec = (expr: Expr): AnyCodec | undefined => {
-      if (sources && expr._tag === 'Column' && expr.table) {
-        return sources[expr.table]?._columns[expr.name]?._codec?.(
+    if (preparedStm._tag === 'Select') {
+      if (preparedStm.where !== undefined) {
+        const newPred = yield* encodePredicate(
+          preparedStm.where,
+          sources,
           driver.dialect.id,
         );
-      }
-
-      return undefined;
-    };
-
-    const encodeLiteral = (col: Expr, litExpr: Expr) => {
-      if (litExpr._tag === 'Literal' && col._tag === 'Column') {
-        if (litExpr.value === null) return Effect.succeed(litExpr);
-        const codec = getCodec(col);
-
-        if (codec) {
-          const encoder = codec.encode as (v: unknown) => unknown;
-          return Effect.try({
-            try: () => lit(encoder(litExpr.value)),
-            catch: (cause) =>
-              new CodecError({
-                column: col?.name,
-                value: litExpr.value,
-                cause,
-              }),
-          });
-        }
-      }
-
-      return Effect.succeed(litExpr);
-    };
-
-    const encodePredicate = (
-      pred: Predicate,
-    ): Effect.Effect<Predicate, CodecError> =>
-      Effect.gen(function* () {
-        if (pred._tag === 'And' || pred._tag === 'Or') {
-          const preds = yield* Effect.forEach(pred.preds, encodePredicate);
-          return pred._tag === 'And' ? and(...preds) : or(...preds);
-        }
-
-        if (pred._tag === 'Not') {
-          const p = yield* encodePredicate(pred.pred);
-          return not(p);
-        }
-
-        if (
-          pred._tag === 'Gte' ||
-          pred._tag === 'Gt' ||
-          pred._tag === 'Lte' ||
-          pred._tag === 'Lt' ||
-          pred._tag === 'Neq' ||
-          pred._tag === 'Eq'
-        ) {
-          const left = yield* encodeLiteral(pred.right, pred.left);
-          const right = yield* encodeLiteral(pred.left, pred.right);
-
-          return { ...pred, left, right };
-        }
-
-        if (pred._tag === 'In') {
-          const values = yield* Effect.forEach(pred.values, (expr) =>
-            encodeLiteral(pred.left, expr),
-          );
-
-          return { ...pred, values };
-        }
-
-        if (pred._tag === 'Between' && pred.expr._tag === 'Column') {
-          const min = yield* encodeLiteral(pred.expr, pred.min);
-          const max = yield* encodeLiteral(pred.expr, pred.max);
-
-          return between(pred.expr, min, max);
-        }
-
-        return pred;
-      });
-
-    if (stmt._tag === 'Select') {
-      if (stmt.where !== undefined) {
-        const newPred = yield* encodePredicate(stmt.where);
         preparedStm = {
-          ...stmt,
+          ...preparedStm,
           where: newPred,
+        };
+      }
+
+      if (preparedStm.joins.length > 0) {
+        const joins = yield* Effect.forEach(preparedStm.joins, (j) =>
+          encodePredicate(j.on, sources, driver.dialect.id).pipe(
+            Effect.map((on) => ({
+              ...j,
+              on,
+            })),
+          ),
+        );
+        preparedStm = {
+          ...preparedStm,
+          joins,
         };
       }
     }
 
     if (stmt._tag === 'Insert' && table !== undefined) {
-      const writeCodec: Record<string, AnyCodec> = {};
+      const writeCodec: Record<string, AnyCodec> = prepareCodecs(
+        table._columns,
+        driver.dialect.id,
+      );
 
-      for (const [k, v] of Object.entries(table._columns)) {
-        if (v._codec) {
-          writeCodec[k] = v._codec(driver.dialect.id);
-        }
-      }
-
-      const encodedRows: Array<InsertIR['rows'][number]> = [];
-
-      for (const row of stmt.rows) {
-        const encodedRow = { ...row };
-
-        for (const [k, v] of Object.entries(row)) {
-          if (v._tag === 'Literal' && v.value !== null) {
-            const codec = writeCodec[k];
-            if (codec) {
-              const encoder = codec.encode as (v: unknown) => unknown;
-
-              encodedRow[k] = yield* Effect.try({
-                try: () => lit(encoder(v.value)),
-                catch: (cause) =>
-                  new CodecError({ cause, value: v.value, column: k }),
-              });
-            }
-          }
-        }
-
-        encodedRows.push(encodedRow);
-      }
+      const encodedRows: Array<InsertIR['rows'][number]> =
+        yield* Effect.forEach(stmt.rows, (r) => encodeRow(r, writeCodec));
 
       preparedStm = { ...stmt, rows: encodedRows };
+    }
+
+    if (preparedStm._tag === 'Update' && table !== undefined) {
+      const writeCodec: Record<string, AnyCodec> = prepareCodecs(
+        table._columns,
+        driver.dialect.id,
+      );
+
+      const set: Record<string, Expr> = yield* encodeRow(
+        { ...preparedStm.set },
+        writeCodec,
+      );
+
+      preparedStm = { ...preparedStm, set };
+
+      if (preparedStm.where !== undefined) {
+        const newPred = yield* encodePredicate(
+          preparedStm.where,
+          sources,
+          driver.dialect.id,
+        );
+
+        preparedStm = { ...preparedStm, where: newPred };
+      }
+    }
+
+    if (preparedStm._tag === 'Delete' && table !== undefined) {
+      if (preparedStm.where !== undefined) {
+        const newPred = yield* encodePredicate(
+          preparedStm.where,
+          sources,
+          driver.dialect.id,
+        );
+
+        preparedStm = { ...preparedStm, where: newPred };
+      }
     }
 
     const { sql, params } = compile(preparedStm, driver.dialect);

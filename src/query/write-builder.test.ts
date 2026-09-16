@@ -11,11 +11,13 @@ import { PgDialect } from '#dialect.js';
 import { Driver } from '#drivers/driver.js';
 import { CodecError } from '#errors/errors.js';
 import { selectFrom } from '#query/builder.js';
-import { insertInto } from '#query/write-builders.js';
+import { makeRepository } from '#query/make-repository.js';
+import { deleteFrom, insertInto, update } from '#query/write-builders.js';
 import {
   bool,
   integer,
   nullable,
+  primaryKey,
   text,
   withCodec,
   withDefault,
@@ -279,6 +281,83 @@ describe('encode', () => {
         column: 'label',
         value: 'true',
       });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect('encodes boolean in UPDATE WHERE', () =>
+    Effect.gen(function* () {
+      const db = yield* Driver;
+      const id = db.dialect.quoteIdentifier;
+      const mapCol = db.dialect.mapColumnType;
+      const tableId = id('flags');
+
+      const flags = table('flags', {
+        active: nullable(bool()),
+        id: primaryKey(integer()),
+        name: text(),
+      });
+
+      yield* db.executeRaw(
+        `CREATE TABLE ${tableId} (${id('active')} ${mapCol('integer', {})}, ${id('name')} ${mapCol('text', {})} ,${id('id')} ${mapCol('integer', {})} PRIMARY KEY)`,
+        [],
+      );
+
+      const repo = makeRepository(flags);
+
+      yield* repo.save({ id: 1, active: true, name: 'John' });
+      yield* repo.save({ id: 2, active: false, name: 'Jane' });
+
+      yield* update(flags)
+        .set({ name: 'Updated' })
+        .where((b) => b.eq(b.col('flags', 'active'), b.lit(false)))
+        .execute();
+
+      const rows = yield* selectFrom(flags, 'f')
+        .orderBy((b) => [{ expr: b.col('f', 'id'), dir: 'asc' }])
+        .selectAll()
+        .execute();
+
+      expect(rows).toEqual([
+        { id: 1, active: true, name: 'John' },
+        { id: 2, active: false, name: 'Updated' },
+      ]);
+    }).pipe(Effect.provide(layer)),
+  );
+  it.effect('encodes boolean in DELETE WHERE with RETURNING', () =>
+    Effect.gen(function* () {
+      const db = yield* Driver;
+      const id = db.dialect.quoteIdentifier;
+      const mapCol = db.dialect.mapColumnType;
+      const tableId = id('flags');
+
+      const flags = table('flags', {
+        active: nullable(bool()),
+        id: primaryKey(integer()),
+        name: text(),
+      });
+
+      yield* db.executeRaw(
+        `CREATE TABLE ${tableId} (${id('active')} ${mapCol('integer', {})}, ${id('name')} ${mapCol('text', {})} ,${id('id')} ${mapCol('integer', {})} PRIMARY KEY)`,
+        [],
+      );
+
+      const repo = makeRepository(flags);
+
+      yield* repo.save({ id: 1, active: true, name: 'John' });
+      yield* repo.save({ id: 2, active: false, name: 'Jane' });
+
+      const deleted = yield* deleteFrom(flags)
+        .where((b) => b.eq(b.col('flags', 'active'), b.lit(false)))
+        .returning('id', 'active')
+        .execute();
+
+      const rows = yield* selectFrom(flags, 'f')
+        .orderBy((b) => [{ expr: b.col('f', 'id'), dir: 'asc' }])
+        .selectAll()
+        .execute();
+
+      expect(rows).toEqual([{ id: 1, active: true, name: 'John' }]);
+      expect(deleted).toEqual([{ id: 2, active: false }]);
     }).pipe(Effect.provide(layer)),
   );
 });

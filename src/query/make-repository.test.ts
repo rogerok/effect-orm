@@ -18,7 +18,6 @@ import {
 } from '#errors/errors.js';
 import { selectFrom } from '#query/builder.js';
 import { makeRepository } from '#query/make-repository.js';
-import { insertInto } from '#query/write-builders.js';
 import {
   bool,
   integer,
@@ -26,6 +25,7 @@ import {
   nullable,
   primaryKey,
   text,
+  timestamp,
   withCodec,
   withDefault,
 } from '#schema/columns.js';
@@ -40,7 +40,8 @@ const users = table('users', {
   age: withDefault(integer(), 18),
 });
 
-const layer = SqliteDriver.layer({ path: ':memory:' });
+const sqliteLayer = SqliteDriver.layer({ path: ':memory:' });
+const pgLayer = PGliteDriver.layer();
 
 const createUsers = Effect.gen(function* () {
   const db = yield* Driver;
@@ -89,7 +90,7 @@ describe('makeRepository', () => {
       ]);
       expect(yield* repo.findMany({ name: 'Nobody' })).toEqual([]);
       expect(yield* repo.findMany({})).toEqual([anna, boris, anotherAnna]);
-    }).pipe(Effect.provide(layer)),
+    }).pipe(Effect.provide(sqliteLayer)),
   );
 
   it.effect('updates and deletes only the selected row', () =>
@@ -118,7 +119,7 @@ describe('makeRepository', () => {
       expect(yield* repo.findById(boris.id)).toEqual(boris);
       expect(yield* repo.delete(anna.id)).toBeUndefined();
       expect(yield* repo.delete(999)).toBeUndefined();
-    }).pipe(Effect.provide(layer)),
+    }).pipe(Effect.provide(sqliteLayer)),
   );
 
   it.effect(
@@ -151,7 +152,7 @@ describe('makeRepository', () => {
         });
         expect(yield* repo.delete('account-17')).toBeUndefined();
         expect(yield* repo.findById('account-17')).toBeNull();
-      }).pipe(Effect.provide(layer));
+      }).pipe(Effect.provide(sqliteLayer));
     },
   );
 
@@ -165,7 +166,7 @@ describe('makeRepository', () => {
         repo.save({ id: 1, name: 'Duplicate', nickname: null }),
       );
       expect(duplicate).toBeFailure(UniqueViolationError);
-    }).pipe(Effect.provide(layer)),
+    }).pipe(Effect.provide(sqliteLayer)),
   );
 
   it('rejects a table without a primary key', () => {
@@ -301,7 +302,7 @@ describe('makeRepository', () => {
       const result = yield* repo.save({ id: 1, active: true });
 
       expect(result).toEqual({ id: 1, active: true });
-    }).pipe(Effect.provide(layer)),
+    }).pipe(Effect.provide(sqliteLayer)),
   );
 
   it.effect('check bool with where', () =>
@@ -329,7 +330,7 @@ describe('makeRepository', () => {
 
       expect(active).toEqual({ id: 1, active: true });
       expect(inactive).toEqual({ id: 2, active: false });
-    }).pipe(Effect.provide(layer)),
+    }).pipe(Effect.provide(sqliteLayer)),
   );
 
   it.effect('encodes JSON on save and decodes the returned row', () =>
@@ -355,6 +356,78 @@ describe('makeRepository', () => {
 
       expect(row.rows[0]?.payload).toEqual('{"language":"ru"}');
       expect(result).toEqual({ id: 1, payload: { language: 'ru' } });
-    }).pipe(Effect.provide(layer)),
+    }).pipe(Effect.provide(sqliteLayer)),
   );
+
+  it.effect('encodes UPDATE values and decodes RETURNING', () =>
+    Effect.gen(function* () {
+      const db = yield* Driver;
+      const id = db.dialect.quoteIdentifier;
+      const mapCol = db.dialect.mapColumnType;
+      const tableId = id('flags');
+      const flags = table('flags', {
+        id: primaryKey(integer()),
+        active: bool(),
+      });
+
+      yield* db.executeRaw(
+        `CREATE TABLE ${tableId} (${id('active')} ${mapCol('integer', {})}, ${id('id')} ${mapCol('integer', {})} PRIMARY KEY)`,
+        [],
+      );
+
+      const repo = makeRepository(flags);
+
+      yield* repo.save({ id: 1, active: true });
+      yield* repo.save({ id: 2, active: true });
+
+      const updated = yield* repo.update(1, { active: false });
+      const stored = yield* db.executeRaw(
+        `SELECT ${id('id')}, ${id('active')}
+             FROM ${tableId}
+             ORDER BY ${id('id')}`,
+        [],
+      );
+
+      expect(stored.rows).toEqual([
+        { id: 1, active: 0 },
+        { id: 2, active: 1 },
+      ]);
+      expect(updated).toEqual({ id: 1, active: false });
+    }).pipe(Effect.provide(sqliteLayer)),
+  );
+
+  it.effect('preserves Date through save and findById', () => {
+    const program = () =>
+      Effect.gen(function* () {
+        const db = yield* Driver;
+        const id = db.dialect.quoteIdentifier;
+        const mapCol = db.dialect.mapColumnType;
+        const tableId = id('users');
+        const usersTable = table('users', {
+          id: primaryKey(integer()),
+          createdAt: timestamp(),
+        });
+
+        yield* db.executeRaw(
+          `CREATE TABLE ${tableId} (${id('createdAt')} ${mapCol('text', {})}, ${id('id')} ${mapCol('integer', {})} PRIMARY KEY)`,
+          [],
+        );
+
+        const date = new Date('2026-01-02T03:04:05.000Z');
+
+        const repo = makeRepository(usersTable);
+
+        const result = yield* repo.save({ id: 1, createdAt: date });
+
+        expect(result.createdAt).toEqual(date);
+
+        const row = yield* repo.findById(1);
+        expect(row?.createdAt).toEqual(date);
+      });
+
+    return Effect.gen(function* () {
+      yield* program().pipe(Effect.provide(sqliteLayer));
+      yield* program().pipe(Effect.provide(pgLayer));
+    });
+  });
 });

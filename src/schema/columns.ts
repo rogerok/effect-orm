@@ -5,7 +5,8 @@ import { jsonCodec } from '#codec.js';
 import { dateCodec } from '#codec.js';
 import { booleanCodec } from '#codec.js';
 
-export type SqlType = 'blob' | 'boolean' | 'integer' | 'real' | 'text';
+export type SqlType =
+  'blob' | 'boolean' | 'integer' | 'real' | 'text' | 'timestamp';
 
 export interface ColumnDef<
   T extends SqlType = SqlType,
@@ -81,8 +82,8 @@ export const bool = (): ColumnDef<'boolean', false, false> =>
     booleanCodec,
   );
 
-export const timestamp = (): ColumnDef<'text', false, false> =>
-  withCodec({ _type: 'text', _nullable: false, _pk: false }, dateCodec);
+export const timestamp = () =>
+  withCodec({ _type: 'timestamp', _nullable: false, _pk: false }, dateCodec);
 
 export const json = <T>() =>
   withCodec({ _type: 'text', _nullable: false, _pk: false }, jsonCodec<T>);

@@ -390,4 +390,70 @@ describe('builder codecs (E3.5)', () => {
       }).pipe(Effect.provideService(Driver, driver));
     },
   );
+
+  it.effect('encodes JOIN ON and WHERE together', () =>
+    Effect.gen(function* () {
+      const users = table('users', {
+        id: integer(),
+        active: bool(),
+      });
+      const orders = table('orders', {
+        id: integer(),
+        userId: integer(),
+        paid: bool(),
+      });
+
+      const db = yield* Driver;
+      const id = db.dialect.quoteIdentifier;
+      const ph = db.dialect.placeholder;
+      const mapCol = db.dialect.mapColumnType;
+
+      yield* db.executeRaw(
+        `CREATE TABLE ${id('users')} (
+        ${id('id')} ${mapCol('integer', {})},
+        ${id('active')} ${mapCol('integer', {})}
+  )`,
+        [],
+      );
+
+      yield* db.executeRaw(
+        `CREATE TABLE ${id('orders')} (
+        ${id('id')} ${mapCol('integer', {})},
+        ${id('userId')} ${mapCol('integer', {})},
+        ${id('paid')} ${mapCol('integer', {})}
+      )`,
+        [],
+      );
+
+      yield* db.executeRaw(
+        `INSERT INTO ${id('users')} (${id('id')}, ${id('active')})
+            VALUES (${ph(1)}, ${ph(2)}), (${ph(3)}, ${ph(4)})`,
+        [1, 1, 2, 0],
+      );
+
+      yield* db.executeRaw(
+        `INSERT INTO ${id('orders')} (
+        ${id('id')}, ${id('userId')}, ${id('paid')}
+        )
+        VALUES
+          (${ph(1)}, ${ph(2)}, ${ph(3)}),
+          (${ph(4)}, ${ph(5)}, ${ph(6)}),
+          (${ph(7)}, ${ph(8)}, ${ph(9)})`,
+        [10, 1, 1, 11, 1, 0, 12, 2, 1],
+      );
+
+      const rows = yield* selectFrom(users, 'u')
+        .innerJoin(orders, 'o', (b) =>
+          b.and(
+            b.eq(b.col('u', 'id'), b.col('o', 'userId')),
+            b.eq(b.col('o', 'paid'), b.lit(true)),
+          ),
+        )
+        .where((b) => b.eq(b.col('u', 'active'), b.lit(true)))
+        .select((b) => ({ id: b.col('o', 'id') }))
+        .execute();
+
+      expect(rows).toEqual([{ id: 10 }]);
+    }).pipe(Effect.provide(sqliteLayer)),
+  );
 });

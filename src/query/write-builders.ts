@@ -16,6 +16,34 @@ import { del } from '#query/statements.js';
 import { insert, update as updateStmt } from '#query/statements.js';
 import { run } from '#query/typed-run.js';
 
+const prepareCodecsFactories = <T extends AnyTableDef, R>(
+  table: T,
+  stmt: Delete<R> | Insert<R> | Update<R>,
+): Record<string, NonNullable<ColumnDef['_codec']>> => {
+  const codecFactories: Record<string, NonNullable<ColumnDef['_codec']>> = {};
+  if (stmt.returning !== null && stmt.returning !== '*') {
+    for (const projection of stmt.returning) {
+      if (projection.expr._tag === 'Column') {
+        const codec = table._columns[projection.expr.name]?._codec;
+
+        if (codec) {
+          codecFactories[projection.alias ?? projection.expr.name] = codec;
+        }
+      }
+    }
+  }
+
+  if (stmt.returning === '*') {
+    for (const [k, col] of Object.entries(table._columns)) {
+      if (col._codec) {
+        codecFactories[k] = col._codec;
+      }
+    }
+  }
+
+  return codecFactories;
+};
+
 export class ExecutableInsert<T extends AnyTableDef, R> {
   constructor(
     private readonly stmt: Insert<R>,
@@ -27,27 +55,10 @@ export class ExecutableInsert<T extends AnyTableDef, R> {
   }
 
   execute(): Effect.Effect<StatementResult<Insert<R>>, DriverError, Driver> {
-    const codecFactories: Record<string, NonNullable<ColumnDef['_codec']>> = {};
-
-    if (this.stmt.returning !== null && this.stmt.returning !== '*') {
-      for (const projection of this.stmt.returning) {
-        if (projection.expr._tag === 'Column') {
-          const codec = this.table._columns[projection.expr.name]?._codec;
-
-          if (codec) {
-            codecFactories[projection.alias ?? projection.expr.name] = codec;
-          }
-        }
-      }
-    }
-
-    if (this.stmt.returning === '*') {
-      for (const [k, col] of Object.entries(this.table._columns)) {
-        if (col._codec) {
-          codecFactories[k] = col._codec;
-        }
-      }
-    }
+    const codecFactories: Record<
+      string,
+      NonNullable<ColumnDef['_codec']>
+    > = prepareCodecsFactories(this.table, this.stmt);
 
     return run({ stmt: this.toIR(), table: this.table, codecFactories });
   }
@@ -95,7 +106,17 @@ export class ExecutableUpdate<T extends AnyTableDef, R> {
   }
 
   execute(): Effect.Effect<StatementResult<Update<R>>, DriverError, Driver> {
-    return run({ stmt: this.toIR(), table: this.table });
+    const codecFactories: Record<
+      string,
+      NonNullable<ColumnDef['_codec']>
+    > = prepareCodecsFactories(this.table, this.stmt);
+
+    return run({
+      stmt: this.toIR(),
+      table: this.table,
+      codecFactories,
+      sources: { [this.table._name]: this.table },
+    });
   }
 
   returning<const Cols extends ReadonlyArray<keyof InferRow<T> & string>>(
@@ -189,7 +210,17 @@ export class ExecutableDelete<T extends AnyTableDef, R> {
   }
 
   execute(): Effect.Effect<StatementResult<Delete<R>>, DriverError, Driver> {
-    return run({ stmt: this.toIR(), table: this.table });
+    const codecFactories: Record<
+      string,
+      NonNullable<ColumnDef['_codec']>
+    > = prepareCodecsFactories(this.table, this.stmt);
+
+    return run({
+      stmt: this.toIR(),
+      table: this.table,
+      sources: { [this.table._name]: this.table },
+      codecFactories,
+    });
   }
 }
 
