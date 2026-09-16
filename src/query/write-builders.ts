@@ -7,6 +7,7 @@ import type { ExpressionBuilder, Source } from '#query/expression-builder.js';
 import type { InferReturning } from '#query/statements.js';
 import type { Delete, Insert, Pred, Update } from '#query/typed-ast.js';
 import type { AffectedRows, StatementResult } from '#query/typed-run.js';
+import type { ColumnDef } from '#schema/columns.js';
 import type { InferInsert, InferRow, InferUpdate } from '#schema/infer.js';
 import type { AnyTableDef } from '#schema/table.js';
 
@@ -26,7 +27,29 @@ export class ExecutableInsert<T extends AnyTableDef, R> {
   }
 
   execute(): Effect.Effect<StatementResult<Insert<R>>, DriverError, Driver> {
-    return run({ stmt: this.toIR(), table: this.table });
+    const codecFactories: Record<string, NonNullable<ColumnDef['_codec']>> = {};
+
+    if (this.stmt.returning !== null && this.stmt.returning !== '*') {
+      for (const projection of this.stmt.returning) {
+        if (projection.expr._tag === 'Column') {
+          const codec = this.table._columns[projection.expr.name]?._codec;
+
+          if (codec) {
+            codecFactories[projection.alias ?? projection.expr.name] = codec;
+          }
+        }
+      }
+    }
+
+    if (this.stmt.returning === '*') {
+      for (const [k, col] of Object.entries(this.table._columns)) {
+        if (col._codec) {
+          codecFactories[k] = col._codec;
+        }
+      }
+    }
+
+    return run({ stmt: this.toIR(), table: this.table, codecFactories });
   }
 
   returning<const Cols extends ReadonlyArray<keyof InferRow<T> & string>>(

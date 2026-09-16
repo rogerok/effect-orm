@@ -7,6 +7,11 @@ export interface Codec<TS, SQL> {
   readonly encode: (value: TS) => SQL;
 }
 
+export interface AnyCodec {
+  readonly decode: (value: never) => unknown;
+  readonly encode: (value: never) => unknown;
+}
+
 export const passthrough: Codec<unknown, unknown> = {
   encode: (v) => v,
   decode: (v) => v,

@@ -1,3 +1,5 @@
+import type { Codec } from '#codec.js';
+import type { DialectId } from '#dialect.js';
 import type { ColumnDef, SqlType } from '#schema/columns.js';
 import type { TableDef } from '#schema/table.js';
 
@@ -9,10 +11,14 @@ export interface SqlToTs {
   text: string;
 }
 
+type InferValue<C extends ColumnDef<SqlType, boolean, boolean>> = C extends {
+  readonly _codec: (dialectId: DialectId) => Codec<infer TS, infer SQL>;
+}
+  ? TS
+  : SqlToTs[C['_type']];
+
 export type InferColumn<C extends ColumnDef<SqlType, boolean, boolean>> =
-  C['_nullable'] extends true
-    ? SqlToTs[C['_type']] | null
-    : SqlToTs[C['_type']];
+  C['_nullable'] extends true ? InferValue<C> | null : InferValue<C>;
 
 // oxlint-disable-next-line typescript/no-explicit-any
 export type InferRow<T extends TableDef<string, any>> = {

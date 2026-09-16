@@ -1,10 +1,10 @@
-export type Expr =
-  | {
-      readonly _tag: 'Column';
-      readonly name: string;
-      readonly table?: string | undefined;
-    }
-  | { readonly _tag: 'Literal'; readonly value: unknown };
+export type LiteralExpr = { readonly _tag: 'Literal'; readonly value: unknown };
+export type ColumnExpr = {
+  readonly _tag: 'Column';
+  readonly name: string;
+  readonly table?: string | undefined;
+};
+export type Expr = ColumnExpr | LiteralExpr;
 
 export type Predicate =
   | { readonly _tag: 'And' | 'Or'; readonly preds: ReadonlyArray<Predicate> }

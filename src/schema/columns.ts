@@ -1,4 +1,4 @@
-import type { Codec } from '#codec.js';
+import type { AnyCodec, Codec } from '#codec.js';
 import type { DialectId } from '#dialect.js';
 
 import { jsonCodec } from '#codec.js';
@@ -18,13 +18,18 @@ export interface ColumnDef<
   readonly _default?: unknown;
   readonly _hasDefault?: boolean;
   readonly _length?: number;
-  readonly _codec?: (dialectId: DialectId) => Codec<unknown, unknown>;
+  readonly _codec?: (dialectId: DialectId) => AnyCodec;
 }
 
-export const withCodec = <T, S, C extends ColumnDef>(
+export const withCodec = <TS, SQL, C extends ColumnDef>(
   c: C,
-  codecFn: (d: 'postgres' | 'sqlite') => Codec<T, S>,
-): C => ({ ...c, _codec: codecFn as never });
+  codecFn: (d: 'postgres' | 'sqlite') => Codec<TS, SQL>,
+): Omit<C, '_codec'> & {
+  readonly _codec: (dialectId: DialectId) => Codec<TS, SQL>;
+} => ({
+  ...c,
+  _codec: codecFn,
+});
 
 export const withDefault = <C extends ColumnDef>(
   c: C,
@@ -79,7 +84,7 @@ export const bool = (): ColumnDef<'boolean', false, false> =>
 export const timestamp = (): ColumnDef<'text', false, false> =>
   withCodec({ _type: 'text', _nullable: false, _pk: false }, dateCodec);
 
-export const json = <T>(): ColumnDef<'text', false, false> =>
+export const json = <T>() =>
   withCodec({ _type: 'text', _nullable: false, _pk: false }, jsonCodec<T>);
 
 // Modifiers

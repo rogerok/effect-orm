@@ -6,11 +6,20 @@ import type { DriverImpl } from '#drivers/driver.js';
 import type { InferReturning } from '#query/statements.js';
 
 import { compile } from '#compiler/compiler.js';
+import { expectFailure } from '#config/result-matchers.js';
 import { PgDialect } from '#dialect.js';
 import { Driver } from '#drivers/driver.js';
+import { CodecError } from '#errors/errors.js';
 import { selectFrom } from '#query/builder.js';
 import { insertInto } from '#query/write-builders.js';
-import { bool, integer, text, withDefault } from '#schema/columns.js';
+import {
+  bool,
+  integer,
+  nullable,
+  text,
+  withCodec,
+  withDefault,
+} from '#schema/columns.js';
 import { table } from '#schema/table.js';
 
 import * as SqliteDriver from '../drivers/sqlite.js';
@@ -176,7 +185,6 @@ describe('in memory test', () => {
     Effect.gen(function* () {
       const db = yield* Driver;
       const id = db.dialect.quoteIdentifier;
-      const ph = db.dialect.placeholder;
       const mapCol = db.dialect.mapColumnType;
       const tableId = id('flags');
 
@@ -189,13 +197,88 @@ describe('in memory test', () => {
         [],
       );
 
-      const insertResult = yield* insertInto(flags)
-        .values([{ active: true }])
-        .execute();
+      const insertQuery = insertInto(flags).values([{ active: true }]);
+      const queryCopy = structuredClone(insertQuery.toIR());
+
+      yield* insertQuery.execute();
+
+      const active = yield* db.executeRaw(`SELECT * FROM ${tableId}`, []);
 
       const rows = yield* selectFrom(flags, 'f').selectAll().execute();
 
+      expect(insertQuery.toIR()).toEqual(queryCopy);
       expect(rows).toEqual([{ active: true }]);
+      expect(active.rows).toEqual([{ active: 1 }]);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect('null value', () =>
+    Effect.gen(function* () {
+      const db = yield* Driver;
+      const id = db.dialect.quoteIdentifier;
+      const mapCol = db.dialect.mapColumnType;
+      const tableId = id('flags');
+
+      const flags = table('flags', {
+        active: nullable(bool()),
+      });
+
+      yield* db.executeRaw(
+        `CREATE TABLE ${tableId} (${id('active')} ${mapCol('integer', {})})`,
+        [],
+      );
+
+      yield* insertInto(flags)
+        .values([{ active: null }])
+        .execute();
+
+      const active = yield* db.executeRaw(`SELECT * FROM ${tableId}`, []);
+
+      const rows = yield* selectFrom(flags, 'f').selectAll().execute();
+
+      expect(rows).toEqual([{ active: null }]);
+      expect(active.rows).toEqual([{ active: null }]);
+    }).pipe(Effect.provide(layer)),
+  );
+});
+
+describe('encode', () => {
+  it.effect('preserves encode failure details and leaves the table empty', () =>
+    Effect.gen(function* () {
+      const db = yield* Driver;
+      const id = db.dialect.quoteIdentifier;
+      const mapCol = db.dialect.mapColumnType;
+      const tableId = id('posts');
+
+      const encodeErr = new Error();
+
+      const posts = table('posts', {
+        label: withCodec(text(), () => ({
+          encode: () => {
+            throw encodeErr;
+          },
+          decode: (value: unknown) => `decoded:${String(value)}`,
+        })),
+      });
+
+      yield* db.executeRaw(
+        `CREATE TABLE ${tableId} (${id('label')} ${mapCol('text', {})})`,
+        [],
+      );
+
+      const insertQuery = insertInto(posts).values([{ label: 'true' }]);
+
+      const result = yield* Effect.result(insertQuery.execute());
+
+      const postsTable = yield* db.executeRaw(`SELECT * FROM ${tableId}`, []);
+
+      expect(postsTable.rows).toEqual([]);
+      expect(result).toBeFailure(CodecError);
+      expect(expectFailure(result).cause).toBe(encodeErr);
+      expect(expectFailure(result)).toMatchObject({
+        column: 'label',
+        value: 'true',
+      });
     }).pipe(Effect.provide(layer)),
   );
 });

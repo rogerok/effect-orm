@@ -5,20 +5,28 @@ import { expect, expectTypeOf } from 'vitest';
 import type { DriverImpl } from '#drivers/driver.js';
 import type { InferRow } from '#schema/infer.js';
 
+import { expectFailure } from '#config/result-matchers.js';
 import { SqliteDialect } from '#dialect.js';
 import { Driver } from '#drivers/driver.js';
+import * as PGliteDriver from '#drivers/pglite.js';
 import {
+  CodecError,
   NotFoundError,
   PrimaryKeyError,
   ReturningError,
   UniqueViolationError,
 } from '#errors/errors.js';
+import { selectFrom } from '#query/builder.js';
 import { makeRepository } from '#query/make-repository.js';
+import { insertInto } from '#query/write-builders.js';
 import {
+  bool,
   integer,
+  json,
   nullable,
   primaryKey,
   text,
+  withCodec,
   withDefault,
 } from '#schema/columns.js';
 import { table } from '#schema/table.js';
@@ -176,6 +184,7 @@ describe('makeRepository', () => {
         }),
       executeStream: () => Stream.empty,
     };
+
     const repo = makeRepository(users);
 
     return Effect.gen(function* () {
@@ -196,6 +205,51 @@ describe('makeRepository', () => {
       }
     });
   });
+
+  it.effect('where codec error', () =>
+    Effect.gen(function* () {
+      const encodeErr = new Error();
+
+      const posts = table('posts', {
+        label: withCodec(text(), () => ({
+          encode: () => {
+            throw encodeErr;
+          },
+          decode: (value: unknown) => `decoded:${String(value)}`,
+        })),
+      });
+
+      const db = yield* Driver;
+      const ph = db.dialect.placeholder;
+      const id = db.dialect.quoteIdentifier;
+      const mapCol = db.dialect.mapColumnType;
+      const tableId = id('posts');
+
+      yield* db.executeRaw(
+        `CREATE TABLE ${tableId} (${id('label')} ${mapCol('text', {})})`,
+        [],
+      );
+
+      yield* db.executeRaw(
+        `INSERT INTO ${tableId} (${id('label')}) VALUES (${ph(1)})`,
+        ['needle'],
+      );
+
+      const result = yield* Effect.result(
+        selectFrom(posts, 'p')
+          .where((b) => b.eq(b.col('p', 'label'), b.lit('needle')))
+          .selectAll()
+          .execute(),
+      );
+
+      expect(result).toBeFailure(CodecError);
+      expect(expectFailure(result).cause).toBe(encodeErr);
+      expect(expectFailure(result)).toMatchObject({
+        column: 'label',
+        value: 'needle',
+      });
+    }).pipe(Effect.provide(SqliteDriver.layer({ path: ':memory:' }))),
+  );
 
   it('exposes table-derived input and result types', () => {
     const repo = makeRepository(users);
@@ -225,4 +279,82 @@ describe('makeRepository', () => {
 
     void [invalidId, invalidPatch, invalidCriteria, invalidInsert];
   });
+
+  it.effect('codecs with boolean', () =>
+    Effect.gen(function* () {
+      const db = yield* Driver;
+      const id = db.dialect.quoteIdentifier;
+      const mapCol = db.dialect.mapColumnType;
+      const tableId = id('flags');
+      const flags = table('flags', {
+        id: primaryKey(integer()),
+        active: bool(),
+      });
+
+      yield* db.executeRaw(
+        `CREATE TABLE ${tableId} (${id('active')} ${mapCol('integer', {})}, ${id('id')} ${mapCol('integer', {})} PRIMARY KEY)`,
+        [],
+      );
+
+      const repo = makeRepository(flags);
+
+      const result = yield* repo.save({ id: 1, active: true });
+
+      expect(result).toEqual({ id: 1, active: true });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect('check bool with where', () =>
+    Effect.gen(function* () {
+      const db = yield* Driver;
+      const id = db.dialect.quoteIdentifier;
+      const mapCol = db.dialect.mapColumnType;
+      const tableId = id('flags');
+      const flags = table('flags', {
+        id: primaryKey(integer()),
+        active: bool(),
+      });
+
+      yield* db.executeRaw(
+        `CREATE TABLE ${tableId} (${id('active')} ${mapCol('boolean', {})}, ${id('id')} ${mapCol('integer', {})} PRIMARY KEY)`,
+        [],
+      );
+
+      const repo = makeRepository(flags);
+      yield* repo.save({ id: 1, active: true });
+      yield* repo.save({ id: 2, active: false });
+
+      const active = yield* repo.findBy({ active: true });
+      const inactive = yield* repo.findBy({ active: false });
+
+      expect(active).toEqual({ id: 1, active: true });
+      expect(inactive).toEqual({ id: 2, active: false });
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect('encodes JSON on save and decodes the returned row', () =>
+    Effect.gen(function* () {
+      const db = yield* Driver;
+      const id = db.dialect.quoteIdentifier;
+      const mapCol = db.dialect.mapColumnType;
+      const tableId = id('flags');
+      const flags = table('flags', {
+        id: primaryKey(integer()),
+        payload: json<{ language: string }>(),
+      });
+
+      yield* db.executeRaw(
+        `CREATE TABLE ${tableId} (${id('payload')} ${mapCol('text', {})}, ${id('id')} ${mapCol('integer', {})} PRIMARY KEY)`,
+        [],
+      );
+
+      const repo = makeRepository(flags);
+
+      const result = yield* repo.save({ id: 1, payload: { language: 'ru' } });
+      const row = yield* db.executeRaw(`SELECT * FROM ${tableId}`, []);
+
+      expect(row.rows[0]?.payload).toEqual('{"language":"ru"}');
+      expect(result).toEqual({ id: 1, payload: { language: 'ru' } });
+    }).pipe(Effect.provide(layer)),
+  );
 });

@@ -1,7 +1,13 @@
 import { Effect } from 'effect';
 
-import type { Codec } from '#codec.js';
-import type { DeleteIR, InsertIR, UpdateIR } from '#compiler/ir.js';
+import type { AnyCodec } from '#codec.js';
+import type {
+  DeleteIR,
+  Expr,
+  InsertIR,
+  Predicate,
+  UpdateIR,
+} from '#compiler/ir.js';
 import type { DriverError } from '#errors/errors.js';
 import type {
   Delete,
@@ -11,12 +17,13 @@ import type {
   Update,
 } from '#query/typed-ast.js';
 import type { ColumnDef } from '#schema/columns.js';
+import type { AnyTableDef } from '#schema/table.js';
 
 import { compile } from '#compiler/compiler.js';
 import { Driver } from '#drivers/driver.js';
 import { CodecError } from '#errors/errors.js';
-import type { AnyTableDef } from '#schema/table.js';
 import { lit } from '#query/expressions.js';
+import { and, between, not, or } from '#query/predicates.js';
 
 export type AffectedRows = { readonly affectedRows: number };
 
@@ -40,6 +47,7 @@ type RunOptions<S extends Statement<unknown>, T extends AnyTableDef> = {
   readonly stmt: S;
   readonly codecFactories?:
     Readonly<Record<string, NonNullable<ColumnDef['_codec']>>> | undefined;
+  readonly sources?: Readonly<Record<string, AnyTableDef>>;
   readonly table?: T | undefined;
 };
 
@@ -50,13 +58,103 @@ export const runWithSql = <
   stmt,
   table,
   codecFactories,
+  sources,
 }: RunOptions<S, T>): Effect.Effect<RunResult<S>, DriverError, Driver> =>
   Effect.gen(function* () {
     const driver = yield* Driver;
-    const writeCodec: Record<string, Codec<unknown, unknown>> = {};
     let preparedStm: Statement<unknown> = stmt;
 
+    const getCodec = (expr: Expr): AnyCodec | undefined => {
+      if (sources && expr._tag === 'Column' && expr.table) {
+        return sources[expr.table]?._columns[expr.name]?._codec?.(
+          driver.dialect.id,
+        );
+      }
+
+      return undefined;
+    };
+
+    const encodeLiteral = (col: Expr, litExpr: Expr) => {
+      if (litExpr._tag === 'Literal' && col._tag === 'Column') {
+        if (litExpr.value === null) return Effect.succeed(litExpr);
+        const codec = getCodec(col);
+
+        if (codec) {
+          const encoder = codec.encode as (v: unknown) => unknown;
+          return Effect.try({
+            try: () => lit(encoder(litExpr.value)),
+            catch: (cause) =>
+              new CodecError({
+                column: col?.name,
+                value: litExpr.value,
+                cause,
+              }),
+          });
+        }
+      }
+
+      return Effect.succeed(litExpr);
+    };
+
+    const encodePredicate = (
+      pred: Predicate,
+    ): Effect.Effect<Predicate, CodecError> =>
+      Effect.gen(function* () {
+        if (pred._tag === 'And' || pred._tag === 'Or') {
+          const preds = yield* Effect.forEach(pred.preds, encodePredicate);
+          return pred._tag === 'And' ? and(...preds) : or(...preds);
+        }
+
+        if (pred._tag === 'Not') {
+          const p = yield* encodePredicate(pred.pred);
+          return not(p);
+        }
+
+        if (
+          pred._tag === 'Gte' ||
+          pred._tag === 'Gt' ||
+          pred._tag === 'Lte' ||
+          pred._tag === 'Lt' ||
+          pred._tag === 'Neq' ||
+          pred._tag === 'Eq'
+        ) {
+          const left = yield* encodeLiteral(pred.right, pred.left);
+          const right = yield* encodeLiteral(pred.left, pred.right);
+
+          return { ...pred, left, right };
+        }
+
+        if (pred._tag === 'In') {
+          const values = yield* Effect.forEach(pred.values, (expr) =>
+            encodeLiteral(pred.left, expr),
+          );
+
+          return { ...pred, values };
+        }
+
+        if (pred._tag === 'Between' && pred.expr._tag === 'Column') {
+          const min = yield* encodeLiteral(pred.expr, pred.min);
+          const max = yield* encodeLiteral(pred.expr, pred.max);
+
+          return between(pred.expr, min, max);
+        }
+
+        return pred;
+      });
+
+    if (stmt._tag === 'Select') {
+      if (stmt.where !== undefined) {
+        const newPred = yield* encodePredicate(stmt.where);
+        preparedStm = {
+          ...stmt,
+          where: newPred,
+        };
+      }
+    }
+
     if (stmt._tag === 'Insert' && table !== undefined) {
+      const writeCodec: Record<string, AnyCodec> = {};
+
       for (const [k, v] of Object.entries(table._columns)) {
         if (v._codec) {
           writeCodec[k] = v._codec(driver.dialect.id);
@@ -72,8 +170,10 @@ export const runWithSql = <
           if (v._tag === 'Literal' && v.value !== null) {
             const codec = writeCodec[k];
             if (codec) {
+              const encoder = codec.encode as (v: unknown) => unknown;
+
               encodedRow[k] = yield* Effect.try({
-                try: () => lit(codec.encode(v.value)),
+                try: () => lit(encoder(v.value)),
                 catch: (cause) =>
                   new CodecError({ cause, value: v.value, column: k }),
               });
@@ -83,6 +183,8 @@ export const runWithSql = <
 
         encodedRows.push(encodedRow);
       }
+
+      preparedStm = { ...stmt, rows: encodedRows };
     }
 
     const { sql, params } = compile(preparedStm, driver.dialect);
@@ -91,7 +193,7 @@ export const runWithSql = <
 
     let rows = raw.rows;
     if (codecFactories) {
-      const codecs: Record<string, Codec<unknown, unknown>> = {};
+      const codecs: Record<string, AnyCodec> = {};
 
       for (const [k, v] of Object.entries(codecFactories)) {
         codecs[k] = v(driver.dialect.id);
@@ -112,8 +214,10 @@ export const runWithSql = <
               continue;
             }
 
+            const decoder = codec.decode as (v: unknown) => unknown;
+
             row[col] = yield* Effect.try({
-              try: () => codec.decode(value),
+              try: () => decoder(value),
               catch: (cause) => new CodecError({ column: col, cause, value }),
             });
           }
@@ -136,9 +240,7 @@ export const runWithSql = <
     return { result, sql };
   });
 
-export const run = <S extends Statement<unknown>, T extends AnyTableDef>({
-  stmt,
-  table,
-  codecFactories,
-}: RunOptions<S, T>): Effect.Effect<StatementResult<S>, DriverError, Driver> =>
-  runWithSql({ stmt, table, codecFactories }).pipe(Effect.map((r) => r.result));
+export const run = <S extends Statement<unknown>, T extends AnyTableDef>(
+  options: RunOptions<S, T>,
+): Effect.Effect<StatementResult<S>, DriverError, Driver> =>
+  runWithSql(options).pipe(Effect.map((r) => r.result));
