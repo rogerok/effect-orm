@@ -333,8 +333,8 @@ describe('makeRepository', () => {
     }).pipe(Effect.provide(sqliteLayer)),
   );
 
-  it.effect('encodes JSON on save and decodes the returned row', () =>
-    Effect.gen(function* () {
+  it.effect('encodes JSON on save and decodes the returned row', () => {
+    const program = Effect.gen(function* () {
       const db = yield* Driver;
       const id = db.dialect.quoteIdentifier;
       const mapCol = db.dialect.mapColumnType;
@@ -345,19 +345,33 @@ describe('makeRepository', () => {
       });
 
       yield* db.executeRaw(
-        `CREATE TABLE ${tableId} (${id('payload')} ${mapCol('text', {})}, ${id('id')} ${mapCol('integer', {})} PRIMARY KEY)`,
+        `CREATE TABLE ${tableId} (${id('payload')} ${mapCol(flags._columns.payload._type, {})}, ${id('id')} ${mapCol('integer', {})} PRIMARY KEY)`,
         [],
       );
 
       const repo = makeRepository(flags);
 
-      const result = yield* repo.save({ id: 1, payload: { language: 'ru' } });
-      const row = yield* db.executeRaw(`SELECT * FROM ${tableId}`, []);
+      const obj = { id: 1, payload: { language: 'ru' } };
 
-      expect(row.rows[0]?.payload).toEqual('{"language":"ru"}');
-      expect(result).toEqual({ id: 1, payload: { language: 'ru' } });
-    }).pipe(Effect.provide(sqliteLayer)),
-  );
+      const result = yield* repo.save(obj);
+      const row = yield* db.executeRaw(`SELECT * FROM ${tableId}`, []);
+      const byId = yield* repo.findById(1);
+
+      expect(result).toEqual(obj);
+      expect(byId).toEqual(obj);
+
+      return { row };
+    });
+
+    return Effect.gen(function* () {
+      const sql = yield* program.pipe(Effect.provide(sqliteLayer));
+      const pg = yield* program.pipe(Effect.provide(pgLayer));
+
+      expect(sql.row.rows[0]?.payload).toEqual('{"language":"ru"}');
+
+      expect(pg.row.rows[0]?.payload).toEqual({ language: 'ru' });
+    });
+  });
 
   it.effect('encodes UPDATE values and decodes RETURNING', () =>
     Effect.gen(function* () {
@@ -409,7 +423,7 @@ describe('makeRepository', () => {
         });
 
         yield* db.executeRaw(
-          `CREATE TABLE ${tableId} (${id('createdAt')} ${mapCol('text', {})}, ${id('id')} ${mapCol('integer', {})} PRIMARY KEY)`,
+          `CREATE TABLE ${tableId} (${id('createdAt')} ${mapCol(usersTable._columns.createdAt._type, {})}, ${id('id')} ${mapCol(usersTable._columns.id._type, {})} PRIMARY KEY)`,
           [],
         );
 

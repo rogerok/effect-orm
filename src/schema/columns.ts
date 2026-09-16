@@ -6,7 +6,7 @@ import { dateCodec } from '#codec.js';
 import { booleanCodec } from '#codec.js';
 
 export type SqlType =
-  'blob' | 'boolean' | 'integer' | 'real' | 'text' | 'timestamp';
+  'blob' | 'boolean' | 'integer' | 'json' | 'real' | 'text' | 'timestamp';
 
 export interface ColumnDef<
   T extends SqlType = SqlType,
@@ -86,7 +86,7 @@ export const timestamp = () =>
   withCodec({ _type: 'timestamp', _nullable: false, _pk: false }, dateCodec);
 
 export const json = <T>() =>
-  withCodec({ _type: 'text', _nullable: false, _pk: false }, jsonCodec<T>);
+  withCodec({ _type: 'json', _nullable: false, _pk: false }, jsonCodec<T>);
 
 // Modifiers
 export const nullable = <C extends ColumnDef<SqlType, false, boolean>>(

@@ -7,8 +7,10 @@ export interface SqlToTs {
   blob: Uint8Array;
   boolean: boolean;
   integer: number;
+  json: unknown;
   real: number;
   text: string;
+  timestamp: Date;
 }
 
 type InferValue<C extends ColumnDef<SqlType, boolean, boolean>> = C extends {

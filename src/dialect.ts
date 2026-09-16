@@ -29,11 +29,13 @@ export const PgDialect: Dialect = {
 
     return (
       {
-        integer: 'INTEGER',
-        real: 'DOUBLE PRECISION',
-        text: 'TEXT',
         blob: 'BYTEA',
         boolean: 'BOOLEAN',
+        integer: 'INTEGER',
+        json: 'JSONB',
+        real: 'DOUBLE PRECISION',
+        text: 'TEXT',
+        timestamp: 'TIMESTAMPTZ',
       }[t] ?? t.toUpperCase()
     );
   },
@@ -51,11 +53,13 @@ export const SqliteDialect: Dialect = {
 
     return (
       {
-        integer: 'INTEGER',
-        real: 'REAL',
-        text: 'TEXT',
         blob: 'BLOB',
         boolean: 'INTEGER', //sqlite не имеет boolean - кодируем как 0 / 1
+        integer: 'INTEGER',
+        json: 'TEXT',
+        real: 'REAL',
+        text: 'TEXT',
+        timestamp: 'TEXT',
       }[t] ?? t.toUpperCase()
     );
   },
