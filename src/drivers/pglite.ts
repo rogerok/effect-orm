@@ -116,4 +116,9 @@ export const layer = (options?: PGliteOptions) =>
   Layer.effect(Driver, make(options));
 
 export const makePool = (size = 1, options?: PGliteOptions) =>
-  Pool.make({ acquire: make(options), size });
+  Effect.gen(function* () {
+    const impl = yield* make(options);
+    const acqr = Effect.succeed(impl);
+
+    return yield* Pool.make({ acquire: acqr, size });
+  });

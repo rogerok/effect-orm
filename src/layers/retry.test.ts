@@ -38,7 +38,7 @@ const makeLayer = ({ onAttempt, error, dialect }: FailingDriverOptions) =>
   );
 
 describe('RetryLayer', () => {
-  it.effect('performs at most 3 attempts for a transient error', () =>
+  it.effect('db state should not be changed', () =>
     Effect.gen(function* () {
       let attempts = 0;
 
@@ -49,7 +49,7 @@ describe('RetryLayer', () => {
       };
 
       const layer = makeLayer({
-        dialect: PgDialect,
+        dialect: SqliteDialect,
         onAttempt: () => (attempts += 1),
         error: new ConnectionFailureError(err),
       });

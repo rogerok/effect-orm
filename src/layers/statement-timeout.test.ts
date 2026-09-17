@@ -1,9 +1,11 @@
 import { describe, it } from '@effect/vitest';
 import { Duration, Effect, Fiber, Layer, Stream } from 'effect';
 import { TestClock } from 'effect/testing';
+import { expect } from 'vitest';
 
 import { SqliteDialect } from '#dialect.js';
 import { Driver } from '#drivers/driver.js';
+import * as PGliteDriver from '#drivers/pglite.js';
 import { StatementTimeoutError } from '#errors/errors.js';
 import { StatementTimeoutLayer } from '#layers/statement-timeout.js';
 
@@ -55,6 +57,44 @@ const executeSlowQuery = (sql: string, duration: Duration.Input) =>
   });
 
 describe('StatementTimeoutLayer', () => {
+  it.live('cancels a slow write without changing the balance', () =>
+    Effect.gen(function* () {
+      const original = yield* Driver;
+
+      const stack = StatementTimeoutLayer({ timeoutMs: 10 }).pipe(
+        Layer.provide(Layer.succeed(Driver, original)),
+      );
+
+      yield* original.executeRaw(
+        `CREATE TABLE accounts (id INTEGER PRIMARY KEY, balance INTEGER NOT NULL)`,
+        [],
+      );
+      yield* original.executeRaw(
+        `INSERT INTO accounts (id, balance) VALUES (1, 1000)`,
+        [],
+      );
+
+      const program = Effect.gen(function* () {
+        const db = yield* Driver;
+
+        yield* db.executeRaw(
+          `UPDATE accounts SET balance = balance - 100 FROM pg_sleep(0.1) WHERE id = 1`,
+          [],
+        );
+      }).pipe(Effect.provide(stack));
+
+      const outcome = yield* Effect.result(program);
+
+      const result = yield* original.executeRaw(
+        `SELECT id, balance FROM accounts WHERE accounts.id = ${original.dialect.placeholder(1)}`,
+        [1],
+      );
+
+      expect(outcome).toBeFailure(StatementTimeoutError);
+      expect(result.rows).toEqual([{ id: 1, balance: 1000 }]);
+    }).pipe(Effect.provide(PGliteDriver.layer())),
+  );
+
   it.effect('Should return error', () =>
     Effect.gen(function* () {
       const result = yield* Effect.result(

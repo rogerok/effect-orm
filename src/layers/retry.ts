@@ -28,7 +28,7 @@ export const RetryLayer = ({ maxAttempts, exponentMs }: RetryLayerOptions) =>
         executeStream: inner.executeStream,
         dialect: inner.dialect,
         executeRaw: (sql, params, options) =>
-          inner.executeRaw(sql, params).pipe(
+          inner.executeRaw(sql, params, options).pipe(
             Effect.retry({
               schedule: Schedule.exponential(Duration.millis(exponentMs)),
               times: maxAttempts - 1,

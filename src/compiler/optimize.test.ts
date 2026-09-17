@@ -96,6 +96,18 @@ describe('optimize predicate', () => {
     );
   });
 
+  it('preserves equality of null literals', () => {
+    const pred = IR.eq(IR.lit(null), IR.lit(null));
+
+    expect(optimizePredicate(pred)).toEqual(pred);
+  });
+
+  it('preserves equality of byte array literals.', () => {
+    const pred = IR.eq(IR.lit(new Uint8Array(1)), IR.lit(new Uint8Array(1)));
+
+    expect(optimizePredicate(pred)).toEqual(pred);
+  });
+
   it('optimize select does not have where property', () => {
     expect(optimizeSelect({ ...ir, where: IR.and() })).not.toHaveProperty(
       'where',

@@ -9,6 +9,7 @@ import { PgDialect } from '#dialect.js';
 import { Driver } from '#drivers/driver.js';
 import { CodecError, NotFoundError } from '#errors/errors.js';
 import { selectFrom } from '#query/builder.js';
+import { insertInto } from '#query/write-builders.js';
 import {
   bool,
   integer,
@@ -455,5 +456,53 @@ describe('builder codecs (E3.5)', () => {
 
       expect(rows).toEqual([{ id: 10 }]);
     }).pipe(Effect.provide(sqliteLayer)),
+  );
+
+  it.effect(
+    'optimizes WHERE while preserving boolean encoding and decoding',
+    () =>
+      Effect.gen(function* () {
+        const flags = table('optimized_flags', {
+          id: integer(),
+          active: bool(),
+        });
+
+        const db = yield* Driver;
+
+        yield* db.executeRaw(
+          'CREATE TABLE optimized_flags (id INTEGER, active INTEGER)',
+          [],
+        );
+
+        yield* insertInto(flags)
+          .values([
+            { id: 1, active: false },
+            { id: 2, active: true },
+          ])
+          .execute();
+
+        const observedDriver = Driver.of({
+          dialect: db.dialect,
+          executeStream: db.executeStream,
+          executeRaw: (sql, params, options) =>
+            Effect.gen(function* () {
+              expect(sql).not.toMatch(/\bTRUE\b/i);
+              expect(params).toEqual([1]);
+
+              return yield* db.executeRaw(sql, params, options);
+            }),
+        });
+
+        const rows = yield* selectFrom(flags, 'f')
+          .where((b) => b.and(b.and(), b.eq(b.col('f', 'active'), b.lit(true))))
+          .select((b) => ({
+            id: b.col('f', 'id'),
+            active: b.col('f', 'active'),
+          }))
+          .execute()
+          .pipe(Effect.provideService(Driver, observedDriver));
+
+        expect(rows).toEqual([{ id: 2, active: true }]);
+      }).pipe(Effect.provide(sqliteLayer)),
   );
 });

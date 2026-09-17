@@ -59,7 +59,12 @@ export const optimizePredicate = (input: Predicate): Predicate => {
    */
 
   if (input._tag === 'Eq') {
-    if (input.left._tag === 'Literal' && input.right._tag === 'Literal') {
+    if (
+      input.left._tag === 'Literal' &&
+      input.right._tag === 'Literal' &&
+      Number.isSafeInteger(input.left.value) &&
+      Number.isSafeInteger(input.right.value)
+    ) {
       return IR.bool(input.left.value === input.right.value);
     }
   }
@@ -100,7 +105,7 @@ export const optimizeSelect = (ir: SelectIR): SelectIR => {
 
   const where = optimizePredicate(ir.where);
 
-  if (where._tag === 'Boolean' && where.value === true) {
+  if (where._tag === 'Boolean' && where.value) {
     const { where: _, ...rest } = ir;
     return rest;
   }

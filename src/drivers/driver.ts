@@ -13,6 +13,7 @@ export interface RawResult {
 
 export interface ExecuteRawOptions {
   canRetry?: boolean;
+  timeoutMs?: number;
 }
 
 export interface DriverImpl {

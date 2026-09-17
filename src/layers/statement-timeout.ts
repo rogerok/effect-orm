@@ -25,7 +25,7 @@ export const StatementTimeoutLayer = ({ timeoutMs }: StatementTimeoutOptions) =>
         dialect: inner.dialect,
         executeRaw: (sql, params, options) =>
           Effect.raceFirst(
-            inner.executeRaw(sql, params, options),
+            inner.executeRaw(sql, params, { ...options, timeoutMs }),
             timeoutEffect(sql),
           ),
       });

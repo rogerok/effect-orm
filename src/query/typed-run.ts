@@ -21,6 +21,7 @@ import type { ColumnDef, SqlType } from '#schema/columns.js';
 import type { AnyTableDef } from '#schema/table.js';
 
 import { compile } from '#compiler/compiler.js';
+import { optimizeSelect } from '#compiler/optimize.js';
 import { Driver } from '#drivers/driver.js';
 import { CodecError } from '#errors/errors.js';
 import { lit } from '#query/expressions.js';
@@ -286,6 +287,10 @@ export const runWithSql = <
 
         preparedStm = { ...preparedStm, where: newPred };
       }
+    }
+
+    if (preparedStm._tag === 'Select') {
+      preparedStm = optimizeSelect(preparedStm);
     }
 
     const { sql, params } = compile(preparedStm, driver.dialect);
