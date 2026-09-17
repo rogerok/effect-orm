@@ -11,11 +11,16 @@ export interface RawResult {
   readonly lastInsertRowId?: bigint | number;
 }
 
+export interface ExecuteRawOptions {
+  canRetry?: boolean;
+}
+
 export interface DriverImpl {
   readonly dialect: Dialect;
   readonly executeRaw: (
     sql: string,
     params: ReadonlyArray<unknown>,
+    options?: ExecuteRawOptions,
   ) => Effect.Effect<RawResult, DriverError>;
 
   readonly executeStream: (

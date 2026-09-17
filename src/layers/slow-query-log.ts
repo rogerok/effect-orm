@@ -15,10 +15,10 @@ export const SlowQueryLogLayer = (options?: SlowQueryLogOptions) =>
       return Driver.of({
         executeStream: inner.executeStream,
         dialect: inner.dialect,
-        executeRaw: (sql, params) =>
+        executeRaw: (sql, params, options) =>
           Effect.gen(function* () {
             const [duration, result] = yield* Effect.timed(
-              inner.executeRaw(sql, params),
+              inner.executeRaw(sql, params, options),
             );
             const ms = Duration.toMillis(duration);
 

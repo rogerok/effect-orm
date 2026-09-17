@@ -23,8 +23,11 @@ export const StatementTimeoutLayer = ({ timeoutMs }: StatementTimeoutOptions) =>
       return Driver.of({
         executeStream: inner.executeStream,
         dialect: inner.dialect,
-        executeRaw: (sql, params) =>
-          Effect.raceFirst(inner.executeRaw(sql, params), timeoutEffect(sql)),
+        executeRaw: (sql, params, options) =>
+          Effect.raceFirst(
+            inner.executeRaw(sql, params, options),
+            timeoutEffect(sql),
+          ),
       });
     }),
   );

@@ -23,7 +23,7 @@ export const MetricLayer = Layer.effect(
     return Driver.of({
       executeStream: inner.executeStream,
       dialect: inner.dialect,
-      executeRaw: (sql, params) =>
+      executeRaw: (sql, params, options) =>
         Effect.gen(function* () {
           const currentQueriesTotal = queryTotalCounter.pipe(
             Metric.withAttributes({
@@ -33,7 +33,7 @@ export const MetricLayer = Layer.effect(
           );
 
           return yield* inner
-            .executeRaw(sql, params)
+            .executeRaw(sql, params, options)
             .pipe(
               Effect.trackDuration(metricTimer),
               Effect.track(currentQueriesTotal),

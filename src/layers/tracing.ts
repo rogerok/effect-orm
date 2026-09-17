@@ -9,9 +9,9 @@ export const TracingLayer = Layer.effect(
     return Driver.of({
       dialect: inner.dialect,
       executeStream: inner.executeStream,
-      executeRaw: (sql, params) =>
+      executeRaw: (sql, params, options) =>
         Effect.gen(function* () {
-          const result = yield* inner.executeRaw(sql, params);
+          const result = yield* inner.executeRaw(sql, params, options);
 
           yield* Effect.annotateCurrentSpan({
             'db.rows.returned': result.rows.length,
@@ -25,6 +25,7 @@ export const TracingLayer = Layer.effect(
               'db.system': inner.dialect.id,
               'db.statement': sql,
               'db.params.count': params.length,
+              'db.canRetry:': !!options?.canRetry,
             },
           }),
         ),

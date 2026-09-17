@@ -27,12 +27,18 @@ export const RetryLayer = ({ maxAttempts, exponentMs }: RetryLayerOptions) =>
       return Driver.of({
         executeStream: inner.executeStream,
         dialect: inner.dialect,
-        executeRaw: (sql, params) =>
+        executeRaw: (sql, params, options) =>
           inner.executeRaw(sql, params).pipe(
             Effect.retry({
               schedule: Schedule.exponential(Duration.millis(exponentMs)),
               times: maxAttempts - 1,
-              while: isTransientError,
+              while: (err) => {
+                if (options?.canRetry) {
+                  return isTransientError(err);
+                }
+
+                return false;
+              },
             }),
           ),
       });
