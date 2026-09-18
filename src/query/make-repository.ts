@@ -29,24 +29,26 @@ interface MakeRepositoryOptions {
   readonly alias?: string;
 }
 
-const criteriaToPreds = <T extends AnyTableDef>(
+const criteriaToPred = <T extends AnyTableDef>(
   criteria: Partial<InferRow<T>>,
   b: ExpressionBuilder<Record<string, Source<T, false>>>,
   alias: string,
-): Array<Pred> =>
-  Object.entries(criteria).reduce<Array<Pred>>((acc, [k, v]) => {
-    if (v === undefined) {
+): Pred =>
+  b.and(
+    ...Object.entries(criteria).reduce<Array<Pred>>((acc, [k, v]) => {
+      if (v === undefined) {
+        return acc;
+      }
+
+      if (v === null) {
+        acc.push(b.isNull(b.col(alias, k)));
+      } else {
+        acc.push(b.eq(b.col(alias, k), b.lit(v)));
+      }
+
       return acc;
-    }
-
-    if (v === null) {
-      acc.push(b.isNull(b.col(alias, k)));
-    } else {
-      acc.push(b.eq(b.col(alias, k), b.lit(v)));
-    }
-
-    return acc;
-  }, []);
+    }, []),
+  );
 
 export const makeRepository = <T extends AnyTableDef>(
   t: T,
@@ -84,12 +86,11 @@ export const makeRepository = <T extends AnyTableDef>(
     rows: InferUpdate<T>,
   ): Effect.Effect<InferRow<T>, DriverError | NotFoundError, Driver> =>
     Effect.gen(function* () {
-      const q = updateQb
+      const result = yield* updateQb
         .set(rows)
         .where((b) => b.eq(b.col(t._name, pk), b.lit(id)))
-        .returning(...colNames);
-
-      const result = yield* q.execute();
+        .returning(...colNames)
+        .execute();
 
       const head = Array.head(result);
 
@@ -113,7 +114,7 @@ export const makeRepository = <T extends AnyTableDef>(
     criteria: Partial<InferRow<T>>,
   ): Effect.Effect<InferRow<T> | null, DriverError, Driver> =>
     selectQb
-      .where((b) => b.and(...criteriaToPreds(criteria, b, alias)))
+      .where((b) => criteriaToPred(criteria, b, alias))
       .selectAll()
       .executeOne()
       .pipe(Effect.map(Option.getOrNull));
@@ -122,7 +123,7 @@ export const makeRepository = <T extends AnyTableDef>(
     criteria: Partial<InferRow<T>>,
   ): Effect.Effect<ReadonlyArray<InferRow<T>>, DriverError, Driver> =>
     selectQb
-      .where((b) => b.and(...criteriaToPreds(criteria, b, alias)))
+      .where((b) => criteriaToPred(criteria, b, alias))
       .selectAll()
       .execute();
 
