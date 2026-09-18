@@ -33,6 +33,11 @@ type ExecutableState = {
   readonly columns: SelectIR['columns'];
 } & BuilderState;
 
+const resolveLimit = (
+  irLimit: Select<unknown>['limit'],
+  defaultLimit: number,
+) => (irLimit === undefined ? defaultLimit : Math.min(defaultLimit, irLimit));
+
 /*
 Использую run, runWithsql т.к. данный функционал уже заменяет вызов драйвера
       const driver = yield* Driver;
@@ -46,11 +51,15 @@ export class ExecutableQuery<R> {
   constructor(private readonly state: ExecutableState) {}
 
   toIR(): Select<R> {
-    const { sources: __, codecFactories: ___, ...rest } = this.state;
-
     return {
       _tag: 'Select',
-      ...rest,
+      limit: this.state.limit,
+      joins: this.state.joins,
+      where: this.state.where,
+      from: this.state.from,
+      offset: this.state.offset,
+      orderBy: this.state.orderBy,
+      columns: this.state.columns,
     };
   }
 
@@ -67,8 +76,13 @@ export class ExecutableQuery<R> {
   executeOne(): Effect.Effect<Option.Option<R>, DriverError, Driver> {
     const ir = this.toIR();
 
+    const defaultLimit = 1;
+
     return run({
-      stmt: ir,
+      stmt: {
+        ...ir,
+        limit: resolveLimit(ir.limit, defaultLimit),
+      },
       codecFactories: this.state.codecFactories,
       sources: this.state.sources,
     }).pipe(Effect.map(Array.head));
@@ -82,10 +96,14 @@ export class ExecutableQuery<R> {
     const ir = this.toIR();
     const codecFactories = this.state.codecFactories;
     const sources = this.state.sources;
+    const defaultLimit = 2;
 
     return Effect.gen(function* () {
       const { sql, result } = yield* runWithSql({
-        stmt: ir,
+        stmt: {
+          ...ir,
+          limit: resolveLimit(ir.limit, defaultLimit),
+        },
         codecFactories,
         sources,
       });
@@ -129,24 +147,15 @@ export class SelectQueryBuilder<S extends SourceMap> {
     return new SelectQueryBuilder<S>(state);
   }
 
-  /**
-   * Добавляет INNER JOIN и регистрирует `alias` как новый источник SourceMap.
-   *
-   * Alias обязан быть уникален в пределах запроса. Повторный alias компилятором
-   * не отклоняется: пересечение `{ [K in A]: T } & S` объединяет колонки обеих
-   * таблиц под одним ключом, поэтому `col` начинает принимать колонки, которых
-   * у источника под этим alias нет.
-   *
-   * Такой запрос отклоняется во время исполнения, и текст ошибки зависит от
-   * базы данных. PostgreSQL отвергает сам FROM: `table name "u" specified more
-   * than once`. SQLite отвергает первую ссылку на колонку через занятый alias:
-   * `ambiguous column name: u.id`.
-   */
   innerJoin<T extends AnyTableDef, A extends string>(
     table: T,
-    alias: A,
+    alias: A extends keyof S ? never : A,
     on: (b: ExpressionBuilder<{ [K in A]: Source<T, false> } & S>) => Pred,
   ): SelectQueryBuilder<{ [K in A]: Source<T, false> } & S> {
+    if (Object.hasOwn(this.state.sources, alias)) {
+      throw new QueryInvariantError({ cause: `Alias already exist ${alias}` });
+    }
+
     const eb = makeExpressionBuilder<{ [K in A]: Source<T, false> } & S>();
     const onPred = on(eb);
 
@@ -165,9 +174,13 @@ export class SelectQueryBuilder<S extends SourceMap> {
 
   leftJoin<T extends AnyTableDef, A extends string>(
     table: T,
-    alias: A,
+    alias: A extends keyof S ? never : A,
     on: (b: ExpressionBuilder<{ [K in A]: Source<T, false> } & S>) => Pred,
   ): SelectQueryBuilder<{ [K in A]: Source<T, true> } & S> {
+    if (Object.hasOwn(this.state.sources, alias)) {
+      throw new QueryInvariantError({ cause: `Alias already exist ${alias}` });
+    }
+
     const eb = makeExpressionBuilder<{ [K in A]: Source<T, false> } & S>();
     const onPred = on(eb);
 
@@ -252,6 +265,8 @@ export class SelectQueryBuilder<S extends SourceMap> {
     const cols = this.state.sources[this.state.from.alias]?._columns;
 
     if (cols === undefined) {
+      /* throw сознательный выбор, по уроку билдеры синхронные
+       */
       throw new QueryInvariantError({
         cause: `Query builder invariant violated: source alias "${this.state.from.alias}" from FROM is missing in sources.`,
       });

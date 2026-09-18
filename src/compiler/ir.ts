@@ -46,9 +46,9 @@ export type SelectIR = {
   readonly from: { readonly table: string; readonly alias?: string };
   readonly joins: ReadonlyArray<Join>;
   readonly orderBy: ReadonlyArray<OrderBy>;
-  readonly limit?: number;
-  readonly offset?: number;
-  readonly where?: Predicate;
+  readonly limit?: number | undefined;
+  readonly offset?: number | undefined;
+  readonly where?: Predicate | undefined;
 };
 
 export type InsertIR = {

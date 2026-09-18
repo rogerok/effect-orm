@@ -148,6 +148,10 @@ const compileSelect = (ir: SelectIR, ctx: Ctx): string => {
 
   if (ir.limit !== undefined) {
     parts.push(`LIMIT ${ir.limit}`);
+  } else if (ir.offset !== undefined && ctx.dialect.id === 'sqlite') {
+    //  SQLite требует перед OFFSET указать LIMIT. При этом LIMIT -1 означает отсутствие верхнего
+    //  ограничения, а не отрицательное количество строк:
+    parts.push(`LIMIT -1`);
   }
 
   if (ir.offset !== undefined) {

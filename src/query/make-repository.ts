@@ -2,6 +2,8 @@ import { Array, Effect, Option } from 'effect';
 
 import type { Driver } from '#drivers/driver.js';
 import type { DriverError } from '#errors/errors.js';
+import type { ExpressionBuilder, Source } from '#query/expression-builder.js';
+import type { Pred } from '#query/typed-ast.js';
 import type { InferInsert, InferRow, InferUpdate } from '#schema/infer.js';
 
 import {
@@ -23,8 +25,34 @@ type PrimaryKeyName<T extends AnyTableDef> = {
     : never;
 }[keyof T['_columns'] & string];
 
-export const makeRepository = <T extends AnyTableDef>(t: T) => {
-  const alias = t._name[0] ?? 'r';
+interface MakeRepositoryOptions {
+  readonly alias?: string;
+}
+
+const criteriaToPreds = <T extends AnyTableDef>(
+  criteria: Partial<InferRow<T>>,
+  b: ExpressionBuilder<Record<string, Source<T, false>>>,
+  alias: string,
+): Array<Pred> =>
+  Object.entries(criteria).reduce<Array<Pred>>((acc, [k, v]) => {
+    if (v === undefined) {
+      return acc;
+    }
+
+    if (v === null) {
+      acc.push(b.isNull(b.col(alias, k)));
+    } else {
+      acc.push(b.eq(b.col(alias, k), b.lit(v)));
+    }
+
+    return acc;
+  }, []);
+
+export const makeRepository = <T extends AnyTableDef>(
+  t: T,
+  options?: MakeRepositoryOptions,
+) => {
+  const alias = options?.alias ?? t._name;
   const entries = Object.entries(t._columns);
   const pk = entries[entries.findIndex(([__, v]) => v._pk)]?.[0];
   const colNames = Object.keys(t._columns) as ReadonlyArray<
@@ -32,6 +60,7 @@ export const makeRepository = <T extends AnyTableDef>(t: T) => {
   >;
 
   if (pk === undefined) {
+    //отсутствие первичного ключа можно считать нарушением предусловия фабрики: репозиторий требует таблицу с первичным ключом.
     throw new PrimaryKeyError({
       cause: 'Primary key should exist in the table',
     });
@@ -84,15 +113,7 @@ export const makeRepository = <T extends AnyTableDef>(t: T) => {
     criteria: Partial<InferRow<T>>,
   ): Effect.Effect<InferRow<T> | null, DriverError, Driver> =>
     selectQb
-      .where((b) =>
-        b.and(
-          ...Object.entries(criteria).map(([k, v]) =>
-            v === null
-              ? b.isNull(b.col(alias, k))
-              : b.eq(b.col(alias, k), b.lit(v)),
-          ),
-        ),
-      )
+      .where((b) => b.and(...criteriaToPreds(criteria, b, alias)))
       .selectAll()
       .executeOne()
       .pipe(Effect.map(Option.getOrNull));
@@ -101,15 +122,7 @@ export const makeRepository = <T extends AnyTableDef>(t: T) => {
     criteria: Partial<InferRow<T>>,
   ): Effect.Effect<ReadonlyArray<InferRow<T>>, DriverError, Driver> =>
     selectQb
-      .where((b) =>
-        b.and(
-          ...Object.entries(criteria).map(([k, v]) =>
-            v === null
-              ? b.isNull(b.col(alias, k))
-              : b.eq(b.col(alias, k), b.lit(v)),
-          ),
-        ),
-      )
+      .where((b) => b.and(...criteriaToPreds(criteria, b, alias)))
       .selectAll()
       .execute();
 

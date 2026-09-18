@@ -32,17 +32,21 @@ export type InferInsert<T extends TableDef<string, any>> = {
   [
     K in keyof T['_columns'] as T['_columns'][K]['_pk'] extends true
       ? K
-      : T['_columns'][K]['_hasDefault'] extends true
+      : T['_columns'][K]['_nullable'] extends true
         ? K
-        : never
+        : T['_columns'][K]['_hasDefault'] extends true
+          ? K
+          : never
   ]?: InferColumn<T['_columns'][K]>;
 } & {
   [
     K in keyof T['_columns'] as T['_columns'][K]['_pk'] extends true
       ? never
-      : T['_columns'][K]['_hasDefault'] extends true
+      : T['_columns'][K]['_nullable'] extends true
         ? never
-        : K
+        : T['_columns'][K]['_hasDefault'] extends true
+          ? never
+          : K
   ]: InferColumn<T['_columns'][K]>;
 };
 

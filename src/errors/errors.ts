@@ -15,6 +15,7 @@ export class ReturningError extends Data.TaggedError('ReturningError')<{
 }> {}
 
 export class TooManyError extends Data.TaggedError('TooManyError')<{
+  /** Число строк, полученных запросом, а не общее число совпадений. */
   readonly count: number;
   readonly sql: string;
 }> {}
