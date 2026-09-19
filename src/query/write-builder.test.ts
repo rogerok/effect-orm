@@ -11,7 +11,6 @@ import { PgDialect } from '#dialect.js';
 import { Driver } from '#drivers/driver.js';
 import { CodecError } from '#errors/errors.js';
 import { selectFrom } from '#query/builder.js';
-import { makeRepository } from '#query/make-repository.js';
 import { deleteFrom, insertInto, update } from '#query/write-builders.js';
 import {
   bool,
@@ -302,10 +301,12 @@ describe('encode', () => {
         [],
       );
 
-      const repo = makeRepository(flags);
-
-      yield* repo.save({ id: 1, active: true, name: 'John' });
-      yield* repo.save({ id: 2, active: false, name: 'Jane' });
+      yield* insertInto(flags)
+        .values([
+          { id: 1, active: true, name: 'John' },
+          { id: 2, active: false, name: 'Jane' },
+        ])
+        .execute();
 
       yield* update(flags)
         .set({ name: 'Updated' })
@@ -341,10 +342,12 @@ describe('encode', () => {
         [],
       );
 
-      const repo = makeRepository(flags);
-
-      yield* repo.save({ id: 1, active: true, name: 'John' });
-      yield* repo.save({ id: 2, active: false, name: 'Jane' });
+      yield* insertInto(flags)
+        .values([
+          { id: 1, active: true, name: 'John' },
+          { id: 2, active: false, name: 'Jane' },
+        ])
+        .execute();
 
       const deleted = yield* deleteFrom(flags)
         .where((b) => b.eq(b.col('flags', 'active'), b.lit(false)))
