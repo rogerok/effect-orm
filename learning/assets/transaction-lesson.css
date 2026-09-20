@@ -1,0 +1,102 @@
+.transaction-lesson article {
+  max-width: 58rem;
+}
+.transaction-lesson h1 {
+  max-width: 17ch;
+}
+.transaction-lesson nav {
+  margin: 1.2rem 0;
+  font:
+    0.85rem/1.6 ui-sans-serif,
+    system-ui,
+    sans-serif;
+}
+transaction-lab {
+  display: block;
+  max-width: 52rem;
+  margin: 1.5rem 0;
+}
+transaction-lab select {
+  max-width: 100%;
+  min-height: 2.5rem;
+  padding: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 0.35rem;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+}
+transaction-lab .lab-controls label {
+  min-width: 0;
+  max-width: 100%;
+}
+transaction-lab [data-title] {
+  overflow-wrap: anywhere;
+}
+transaction-lab .lab-log {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.transaction-states {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+.transaction-states strong {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 1.35rem;
+}
+.transaction-states span {
+  display: block;
+  min-height: 3em;
+}
+.transaction-lesson details {
+  max-width: 52rem;
+  margin: 1rem 0;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  padding: 0.8rem 1rem;
+}
+.transaction-lesson summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+.transaction-lesson :focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 4px;
+}
+.transaction-lesson .source-note {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.transaction-lesson .print-trace {
+  display: none;
+}
+@media (max-width: 700px) {
+  .transaction-states {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media print {
+  transaction-lab,
+  .transaction-lesson nav {
+    display: none;
+  }
+  .transaction-lesson .print-trace {
+    display: block;
+  }
+  .transaction-lesson h1 {
+    font-size: 28pt;
+  }
+  .transaction-lesson h2 {
+    margin-top: 1.3rem;
+  }
+  .transaction-lesson .source-note a[href]::after {
+    content: '';
+  }
+  .transaction-lesson header {
+    padding-bottom: 1rem;
+  }
+}

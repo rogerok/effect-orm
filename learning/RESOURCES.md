@@ -3,7 +3,7 @@
 ## Knowledge
 
 - Course: `~/Documents/bat-school/orm/BatSchool · Своя ORM на TypeScript + Effect.ts.html`
-  Основной материал курса. Текущая миссия — урок 3, разделы 3.1–3.8: FSM на двух классах, SourceMap, ExpressionBuilder, immutable SelectQueryBuilder и ExecutableQuery. Разделы 2.2–2.8 остаются runtime foundation, которую builder должен переиспользовать.
+  Материал уроков 1–4. Для текущего разбора — §4.4–4.5. Примеры иллюстрируют идею; интеграция Repository с UoW в них не завершена. Утверждения сверять с первоисточниками и фактическим кодом проекта.
 - [Current typed query API](../src/query/typed-ast.ts), [statements](../src/query/statements.ts), [typed run](../src/query/typed-run.ts), [typed stream](../src/query/typed-stream.ts) и [Driver](../src/drivers/driver.ts)
   Текущее состояние практической реализации. Runtime IR/compiler, typed statements, execution и streaming уже существуют; builder начинает с адаптации к ним, а не с нового SQL generator.
 - [TypeScript Handbook: Discriminated unions](https://www.typescriptlang.org/docs/handbook/2/narrowing.html#discriminated-unions)
@@ -50,6 +50,14 @@
   Официальные ограничения heap snapshot: остановка main thread, дополнительная память и сравнение удержанных объектов. Snapshot до/после не заменяет наблюдение peak memory.
 - [SQLite: Recursive Common Table Expressions](https://www.sqlite.org/lang_with.html#recursive_common_table_expressions)
   Первичный источник для DB-side generation в E2.7. Официальный пример создаёт числа 1–1 000 000; `UNION ALL` позволяет SQLite выдавать и отбрасывать строки без накопления полного временного набора.
+- [PostgreSQL: Transactions](https://www.postgresql.org/docs/current/tutorial-transactions.html)
+  Основной первоисточник урока 0014: BEGIN, COMMIT, ROLLBACK, неявные транзакции и savepoint. Различать исполнение запроса и фиксацию транзакции.
+- [PostgreSQL: Returning Data from Modified Rows](https://www.postgresql.org/docs/current/dml-returning.html)
+  RETURNING выдаёт результат выполненного запроса, включая созданный БД ключ. Использовать для объяснения доступности id до COMMIT.
+- [Martin Fowler: Unit of Work](https://martinfowler.com/eaaCatalog/unitOfWork.html)
+  Определение шаблона: учёт изменённых объектов и координация записи. Очередь эффектов в проекте — упрощённая реализация, не универсальное определение UoW.
+- [Текущий withTransaction](../src/uow/transaction.ts) и [очередь UoW](../src/uow/unit-of-work.ts)
+  Источники точного поведения проекта. acquireUseRelease сверять с Effect 4.0.0-rc.108, уже указанным выше; не переносить поведение другой версии.
 
 ## Wisdom (Communities)
 

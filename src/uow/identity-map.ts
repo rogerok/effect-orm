@@ -14,7 +14,6 @@ export interface IdentityMap {
     table: string,
     key: IdentityBaseKey,
   ) => Effect.Effect<void>;
-
   readonly set: <E>(
     table: string,
     id: IdentityBaseKey,

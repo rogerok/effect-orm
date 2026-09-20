@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Памятка · Транзакция, Unit of Work и withTransaction</title>
+    <link rel="stylesheet" href="../assets/lesson-theme.css" />
+    <link rel="stylesheet" href="../assets/transaction-lesson.css" />
+  </head>
+  <body class="transaction-lesson">
+    <main>
+      <article>
+        <header>
+          <p class="eyebrow">Effect ORM · памятка к уроку 0014</p>
+          <h1>Выполнить ≠ зафиксировать</h1>
+          <p class="lede">
+            Три состояния записи и точное разделение ответственности в текущем
+            проекте.
+          </p>
+        </header>
+        <nav aria-label="Навигация памятки">
+          <a href="../lessons/0014-transactions-and-unit-of-work.html"
+            >Интерактивный урок</a
+          >
+          · <a href="#glossary">Словарь</a> ·
+          <a href="#wrapper">withTransaction</a> ·
+          <a href="#savepoints">Savepoint</a> ·
+          <a href="#limits">Ограничения</a>
+        </nav>
+
+        <section id="glossary">
+          <h2>Краткий словарь</h2>
+          <dl class="assignment-map">
+            <dt>Эффект (Effect)</dt>
+            <dd>
+              Описание вычисления. Создание эффекта не означает его исполнение.
+              В выполняющемся <code>Effect.gen</code> выражение
+              <code>yield* effect</code> исполняет вложенный эффект.
+            </dd>
+            <dt>Транзакция</dt>
+            <dd>
+              Механизм БД для согласованной фиксации группы изменений. Для этого
+              урока ключевая гарантия — атомарность: всё или ничего.
+            </dd>
+            <dt><code>BEGIN</code></dt>
+            <dd>
+              Начало явной транзакции. Следующие запросы на том же соединении
+              участвуют в ней.
+            </dd>
+            <dt><code>RETURNING</code></dt>
+            <dd>
+              Результат исполненного запроса записи. Может содержать созданный
+              БД ключ до фиксации транзакции.
+            </dd>
+            <dt><code>COMMIT</code></dt>
+            <dd>
+              Фиксация транзакции. Успешное завершение внутреннего savepoint
+              этого не заменяет.
+            </dd>
+            <dt><code>ROLLBACK</code></dt>
+            <dd>
+              Отмена изменений текущей транзакции. Не отменяет отправленное
+              письмо, HTTP-запрос или изменение JavaScript-объекта.
+            </dd>
+            <dt>Unit of Work</dt>
+            <dd>
+              Шаблон учёта изменений и организации их сохранения. В проекте
+              реализован как очередь эффектов, а не автоматическое отслеживание
+              изменений сущностей.
+            </dd>
+            <dt>Отложенная запись<br />(write-behind)</dt>
+            <dd>
+              Запросы записи исполняются позже регистрации. В отличие от неё,
+              обычная транзакция может исполнять SQL сразу, откладывая только
+              фиксацию.
+            </dd>
+            <dt>Точка сохранения<br />(savepoint)</dt>
+            <dd>
+              Метка внутри транзакции. Позволяет отменить последующие изменения,
+              не отменяя предшествующие.
+            </dd>
+          </dl>
+          <p class="source-note">
+            Источники:
+            <a
+              href="https://www.postgresql.org/docs/current/tutorial-transactions.html"
+              >PostgreSQL: Transactions</a
+            >,
+            <a href="https://www.postgresql.org/docs/current/dml-returning.html"
+              >RETURNING</a
+            >,
+            <a href="https://martinfowler.com/eaaCatalog/unitOfWork.html"
+              >Fowler: Unit of Work</a
+            >,
+            <a
+              href="https://www.effect.website/docs/v4/getting-started/using-generators"
+              >Effect: generators</a
+            >.
+          </p>
+        </section>
+
+        <section id="wrapper">
+          <h2>Как читать свой withTransaction</h2>
+          <p>
+            Файл:
+            <a href="../../src/uow/transaction.ts"
+              ><code>src/uow/transaction.ts</code></a
+            >. Ниже — поведение текущей реализации, а не обязательный интерфейс
+            всех библиотек.
+          </p>
+          <ol>
+            <li>
+              <strong>Создаётся новый эффект.</strong> Вызов функции ещё не
+              открывает транзакцию. При исполнении эффект получает
+              <code>Driver</code> и значение <code>TransactionDepth</code>.
+            </li>
+            <li>
+              <strong>Выбирается граница.</strong> Глубина
+              <code>0</code> означает отсутствие внешней обёртки в текущем
+              контексте. Используется <code>BEGIN</code>. При большей глубине
+              используется <code>SAVEPOINT</code>.
+            </li>
+            <li>
+              <strong>Исполняется переданный эффект.</strong> Внешняя обёртка
+              предоставляет ему глубину <code>1</code>, вложенная —
+              <code>depth + 1</code>. <code>provideService</code> задаёт
+              значение для вложенного вычисления, а не меняет глобальный
+              счётчик.
+            </li>
+            <li>
+              <strong>Проверяется Exit.</strong>
+              <code>Exit.isSuccess</code> проверяет исход всей переданной
+              операции. При успехе — <code>COMMIT</code> или
+              <code>RELEASE SAVEPOINT</code>. При неуспехе —
+              <code>ROLLBACK</code> или <code>ROLLBACK TO SAVEPOINT</code>.
+            </li>
+            <li>
+              <strong>Возвращается результат.</strong> Тип результата
+              <code>A</code> сохраняется. Ошибка завершающего действия не
+              позволяет считать всю обёртку успешной.
+            </li>
+          </ol>
+          <h3>Зачем acquireUseRelease</h3>
+          <p>
+            <code>acquire</code> начинает транзакцию, <code>use</code> исполняет
+            операцию, <code>release</code> завершает транзакцию по её исходу.
+            Если начало удалось, Effect выполняет завершающую часть при
+            завершении основной — в том числе при ошибке или прерывании. Начало
+            и завершение защищены от прерывания средствами Effect. Это не
+            гарантия при уничтожении процесса или потере питания.
+          </p>
+          <p>
+            <code>Effect.as(undefined)</code> отбрасывает результат команды
+            начала. Аргумент <code>_</code> в <code>release</code> —
+            неиспользуемый результат начала. Аргумент
+            <code>exit</code> описывает исход основной операции.
+          </p>
+          <p>
+            <code>Effect.orDie</code> на верхнеуровневых <code>COMMIT</code> и
+            <code>ROLLBACK</code> переводит ошибку драйвера в дефект. Ошибка не
+            исчезает, но перестаёт быть обычной типизированной ошибкой канала
+            <code>E</code>.
+          </p>
+          <p class="source-note">
+            Точный контракт RC:
+            <a href="https://unpkg.com/effect@4.0.0-rc.108/src/Effect.ts"
+              >Effect 4.0.0-rc.108: acquireUseRelease, provideService, orDie</a
+            >.
+          </p>
+        </section>
+
+        <section id="uow">
+          <h2>Что делает UoW вокруг обёртки</h2>
+          <pre><code>register A, register B             — только очередь
+uow.commit
+  → прочитать очередь
+  → withTransaction
+      BEGIN
+      исполнить A
+      исполнить B
+      COMMIT
+  → очистить очередь</code></pre>
+          <p>
+            При ошибке операции <code>withTransaction</code> выполняет SQL
+            <code>ROLLBACK</code>. В текущем UoW очередь остаётся, потому что
+            последующая очистка не исполнилась. Явный
+            <code>uow.rollback</code> отбрасывает очередь и очищает его Identity
+            Map. Он сам SQL не выполняет.
+          </p>
+          <p>
+            При пустой очереди <code>uow.commit</code> не открывает транзакцию.
+            При успехе отдельные результаты отбрасываются из-за
+            <code>discard: true</code>. Источник:
+            <a href="../../src/uow/unit-of-work.ts">unit-of-work.ts</a>.
+          </p>
+        </section>
+
+        <section id="savepoints">
+          <h2>Вложенность: это не второй независимый COMMIT</h2>
+          <p>
+            Внешняя операция уже открыла транзакцию. Внутренняя тоже использует
+            <code>withTransaction</code>. Она видит ненулевую глубину и создаёт
+            savepoint.
+          </p>
+          <pre><code>BEGIN                        — внешняя обёртка
+  запись A
+  SAVEPOINT inner            — внутренняя обёртка
+    запись B
+  RELEASE SAVEPOINT inner    — внутренний успех
+ROLLBACK                     — поздняя внешняя ошибка
+
+Итог: отменены и A, и B.</code></pre>
+          <p>
+            <code>RELEASE SAVEPOINT</code> завершает внутренний участок, но не
+            фиксирует внешнюю транзакцию. Поэтому вложенный
+            <code>uow.commit</code> тоже не обещает окончательной фиксации до
+            внешнего <code>COMMIT</code>.
+          </p>
+          <pre><code>BEGIN
+  запись A
+  SAVEPOINT inner
+    запись B → ошибка
+  ROLLBACK TO SAVEPOINT inner
+  внешняя операция обработала ошибку
+  запись C
+COMMIT
+
+Итог: A и C сохранены; B не сохранена.</code></pre>
+          <p>
+            Если внешняя операция не обработает внутреннюю ошибку, ошибка дойдёт
+            до внешней обёртки и вызовет полный <code>ROLLBACK</code>. После
+            <code>ROLLBACK TO</code> сама точка сохранения остаётся
+            определённой; наружная транзакция ещё открыта.
+          </p>
+          <p class="source-note">
+            Источник: раздел Savepoints в
+            <a
+              href="https://www.postgresql.org/docs/current/tutorial-transactions.html"
+              >PostgreSQL: Transactions</a
+            >.
+          </p>
+        </section>
+
+        <section id="choice">
+          <h2>Как выбрать границу</h2>
+          <p>
+            <strong>Создать пользователя и пост с его ключом:</strong> обычный
+            <code>Repository</code> внутри общего <code>withTransaction</code>.
+            Первая вставка возвращает <code>id</code>, вторая использует его.
+            Откат остаётся возможным до общего <code>COMMIT</code>.
+          </p>
+          <p>
+            <strong>Накопить заранее подготовленные записи:</strong> UoW.
+            Исполняющий эффекты UoW сам использует транзакцию. Отдельно
+            оборачивать каждый метод репозитория недостаточно для общей
+            атомарности нескольких вызовов.
+          </p>
+          <p>
+            В PostgreSQL даже без явного <code>BEGIN</code> отдельный SQL-запрос
+            выполняется в неявной транзакции. Явная транзакция приложения нужна,
+            чтобы задать общую границу нескольким запросам; она не обязательна
+            для каждого HTTP-запроса.
+          </p>
+        </section>
+
+        <section id="limits">
+          <h2>Чего текущий код не обещает</h2>
+          <ul>
+            <li>
+              <strong>Обработка ошибки внутри:</strong> если основная операция
+              превращает ошибку в успешный результат, обёртка увидит успех. Это
+              ещё не гарантирует успешный COMMIT: после SQL-ошибки PostgreSQL
+              может находиться в аварийном состоянии транзакции. В тесте ошибки
+              <code>Effect.result(uow.commit)</code> стоит снаружи обёртки.
+            </li>
+            <li>
+              <strong>Соединение:</strong> все SQL-команды транзакции должны
+              выполняться на одном соединении без вмешательства чужой операции.
+              <code>TransactionDepth</code> сам не резервирует соединение в пуле
+              и не блокирует другие fibers.
+            </li>
+            <li>
+              <strong>Память:</strong> SQL ROLLBACK не очищает Identity Map и не
+              восстанавливает JavaScript-объекты. Карта репозитория пока не
+              подключена к карте UoW.
+            </li>
+            <li>
+              <strong>Очередь:</strong> текущий UoW рассчитан на
+              последовательное использование. Конкурентные
+              commit/register/rollback не синхронизированы. После вложенного
+              commit очередь уже очищена, даже если внешняя транзакция позже
+              откатится.
+            </li>
+            <li>
+              <strong>Производительность:</strong> одна транзакция не означает
+              один запрос или один сетевой обмен.
+            </li>
+          </ul>
+          <p class="source-note">
+            Эти ограничения следуют из
+            <a href="../../src/uow/transaction.ts">transaction.ts</a>,
+            <a href="../../src/uow/unit-of-work.ts">unit-of-work.ts</a> и
+            <a href="../../src/repository/make-repository.ts"
+              >make-repository.ts</a
+            >. Это учебная реализация, не утверждение о готовности к
+            конкурентной production-нагрузке.
+          </p>
+        </section>
+        <footer>
+          <p>
+            Вернуться к
+            <a
+              href="../lessons/0014-transactions-and-unit-of-work.html#practice"
+              >практике</a
+            >. Если различие осталось неясным, назови агенту конкретное действие
+            и спроси: «Что уже выполнено, что зафиксировано и что ещё можно
+            отменить?»
+          </p>
+        </footer>
+      </article>
+    </main>
+  </body>
+</html>
