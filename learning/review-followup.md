@@ -43,7 +43,7 @@
 - Boolean round-trip через собственные insert/select builders на SQLite.
 - `repo.save`: boolean и JSON, включая декодирование INSERT RETURNING.
 - `SELECT WHERE`: Eq/Neq/сравнения порядка, And/Or/Not, In, Between обрабатываются encodePredicate.
-  Boolean findBy(true/false) и ошибка WHERE-кодека закреплены постоянными тестами.
+  Boolean findBy (true/false) и ошибка WHERE-кодека закреплены постоянными тестами.
 - `JOIN ON`: кодирование подключено независимо от наличия WHERE. Постоянный тест
   `encodes JOIN ON and WHERE together` проверяет оба условия вместе; исправлена потеря подготовленного WHERE.
 - `UPDATE SET`: encode через общий encodeRow; `UPDATE WHERE`: передаётся sources, выполняется encodePredicate.
@@ -62,8 +62,8 @@
 - **Потоковый путь** `src/query/typed-stream.ts` компилирует Select отдельно от runWithSql и не использует
   описанную подготовку/декодирование. Не объявлять кодеки всех способов исполнения закрытыми.
 - При рефакторинге была реальная регрессия Not: рекурсия получала сам pred вместо pred.pred и зависала.
-  Исправлено. Временный SQLite-сценарий подтвердил обычное сравнение и NOT с точными разными строками;
-  **постоянного регрессионного теста NOT в этой сессии не добавлено**. 38 прежних тестов не ловили зависание.
+  Исправлено. Временный SQLite-сценарий подтвердил обычное сравнение и NOT с точными разными строками; **постоянного
+  регрессионного теста NOT в этой сессии не добавлено**. 38 прежних тестов не ловили зависание.
 - Основные UPDATE/DELETE/JOIN boolean-сценарии проверены на SQLite, не все варианты на PostgreSQL.
   Множественные JOIN, полный набор кодеков/предикатов, ошибки/NULL во всех write-вариантах не доказаны.
 - Низкоуровневые вызовы без метаданных таблицы не получают автоматически гарантии typed builders.
@@ -80,7 +80,7 @@
 
 - withCodec сохраняет обязательную фабрику Codec<TS, SQL>; InferValue извлекает TS, InferColumn добавляет null.
   Дополнительный фантом `_ts` не вводили: существующей фабрики достаточно для вывода типа.
-- json<T>() сохраняет T. timestamp() больше не имеет стирающей аннотации ColumnDef<'text'>.
+- json<T>() сохраняет T. timestamp () больше не имеет стирающей аннотации ColumnDef<'text'>.
 - SqlType расширен `timestamp` и `json`; соответствующие конструкторы используют эти метаданные.
 - Диалекты: timestamp → TIMESTAMPTZ / TEXT; json → JSONB / TEXT (PostgreSQL / SQLite).
 - SqlToTs содержит timestamp: Date и json: unknown. Последнее — безопасный запасной тип; json<T>() выводит T
@@ -90,7 +90,7 @@
   INSERT RETURNING и findById на SQLite и PGlite.
 - `encodes JSON on save and decodes the returned row`: объект `{ language: 'ru' }` через save и findById
   на SQLite и PGlite. Сырое хранение отдельно: SQLite — JSON-строка, PGlite JSONB — объект.
-- Тест сначала оставлял mapCol('text') для PostgreSQL и получил '[object Object]'. Исправлен DDL теста:
+- Тест сначала оставлял mapCol ('text') для PostgreSQL и получил '[object Object]'. Исправлен DDL теста:
   тип берётся из `_columns.payload._type`, ожидания не подгонялись под потерю данных.
 
 Ограничения: PostgreSQL проверен через PGlite, не отдельный сервер. Generic T — не runtime-валидация JSON.
@@ -330,7 +330,7 @@ PGlite `0.5.7` не предоставляет публичный `AbortSignal`/
 ## 8. Оптимизатор и кэш компиляции — открыт
 
 `optimizeSelect` используется в тестах/benchmark; `makeCompileCache` — в benchmark.
-`src/compiler/run.ts`, `src/query/typed-run.ts`, `src/query/typed-stream.ts` вызывают compile напрямую.
+`../src/compiler/run-ir.ts`, `src/query/typed-run.ts`, `src/query/typed-stream.ts` вызывают compile напрямую.
 Интеграция не выполнена. Сначала безопасность/корректность, затем оптимизация; нужен обоснованный контракт
 кэша с учётом диалекта и параметров. Не выдавать отсутствие оптимизации само по себе за неверный результат SQL.
 
@@ -352,7 +352,7 @@ PGlite `0.5.7` не предоставляет публичный `AbortSignal`/
 
 ### 9.3. Undefined в критериях — открыт
 
-findBy/findMany обходят Object.entries(criteria), отдельно учитывают null, но не undefined.
+findBy/findMany обходят Object.entries (criteria), отдельно учитывают null, но не undefined.
 exactOptionalPropertyTypes запрещает обычный типизированный вызов с явным undefined, но runtime-гарантии нет.
 Нужно выбрать и проверить контракт: пропуск либо отказ; не менять смысл фильтра молча без решения.
 
@@ -383,7 +383,8 @@ innerJoin/leftJoin не запрещают повторный alias, есть т
 ## Проверки на момент паузы
 
 - После UPDATE/DELETE и их рефакторинга: 40 тестов трёх query-файлов прошли, check-types прошёл.
-- После timestamp: `pnpm test src/query/make-repository.test.ts src/query/builder.test.ts src/query/write-builder.test.ts`
+- После timestamp:
+  `pnpm test src/query/make-repository.test.ts src/query/builder.test.ts src/query/write-builder.test.ts`
   — **41/41**, `pnpm check-types` — код 0.
 - После последней правки JSON с findById:
   `pnpm exec vitest run --config vitest.config.ts src/query/make-repository.test.ts -t 'encodes JSON on save and decodes the returned row'`
