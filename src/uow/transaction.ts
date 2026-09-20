@@ -1,4 +1,4 @@
-import { Context, Effect, Exit } from 'effect';
+import { Context, Effect, Exit, Schedule } from 'effect';
 
 import type { DriverError } from '#errors/errors.js';
 
@@ -41,3 +41,14 @@ export const withTransaction = <A, E, R>(
               .pipe(Effect.orDie),
     );
   });
+
+const retryableTransaction = <A, E, R>(eff: Effect.Effect<A, E, R>) =>
+  withTransaction(eff).pipe(
+    Effect.retry({
+      schedule: Schedule.exponential('100 millis'),
+      times: 3,
+      while: (e: unknown) =>
+        (e as { _tag?: string })._tag === 'DbError' &&
+        (e as { cause?: { code?: string } }).cause?.code === '40001',
+    }),
+  );
