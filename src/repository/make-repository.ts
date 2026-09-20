@@ -3,13 +3,15 @@ import { Array, Effect, Option } from 'effect';
 import type { Driver } from '#drivers/driver.js';
 import type { DriverError } from '#errors/errors.js';
 import type { ExpressionBuilder, Source } from '#query/expression-builder.js';
-import type { Pred } from '#query/typed-ast.js';
+import type { Expr, Pred } from '#query/typed-ast.js';
 import type { InferInsert, InferRow, InferUpdate } from '#schema/infer.js';
 import type { IdentityBaseKey } from '#uow/identity-map.js';
 
 import {
   NotFoundError,
+  OptimisticLockError,
   PrimaryKeyError,
+  QueryInvariantError,
   ReturningError,
 } from '#errors/errors.js';
 import { selectFrom } from '#query/builder.js';
@@ -29,6 +31,10 @@ type PrimaryKeyName<T extends AnyTableDef> = {
 
 interface MakeRepositoryOptions {
   readonly alias?: string;
+}
+
+interface RepoUpdateOptions {
+  expectedVersion?: number | undefined;
 }
 
 const criteriaToPred = <T extends AnyTableDef>(
@@ -97,21 +103,66 @@ export const makeRepository = <T extends AnyTableDef>(
   const update = (
     id: Extract<InferRow<T>[PrimaryKeyName<T>], IdentityBaseKey>,
     rows: InferUpdate<T>,
+    updateOptions: RepoUpdateOptions = {},
   ): Effect.Effect<
     InferRow<T>,
-    DriverError | NotFoundError,
+    DriverError | NotFoundError | OptimisticLockError,
     Driver | IdentityMapTag
   > =>
     Effect.gen(function* () {
+      let currentRows = rows;
+      let nextVersion: number | undefined = undefined;
+      const versionColumn = t._columns['version'];
+
+      if (updateOptions.expectedVersion !== undefined) {
+        if (
+          versionColumn?._nullable ||
+          versionColumn?._pk ||
+          versionColumn?._type !== 'integer' ||
+          versionColumn?._codec !== undefined
+        ) {
+          return yield* Effect.die(
+            new QueryInvariantError({
+              cause:
+                'Version column should be not nullable not PK integer without codec',
+            }),
+          );
+        }
+
+        nextVersion = updateOptions.expectedVersion + 1;
+        currentRows = { ...currentRows, version: nextVersion };
+      }
+
       const result = yield* updateQb
-        .set(rows)
-        .where((b) => b.eq(b.col(t._name, pk), b.lit(id)))
+        .set(currentRows)
+        .where((b) => {
+          const p = b.eq(b.col(t._name, pk), b.lit(id));
+
+          if (updateOptions.expectedVersion !== undefined) {
+            return b.and(
+              p,
+              b.eq(
+                b.col(t._name, 'version') as Expr<number>,
+                b.lit(updateOptions.expectedVersion),
+              ),
+            );
+          }
+          return p;
+        })
         .returning(...colNames)
         .execute();
 
       const head = Array.head(result);
 
       if (Option.isNone(head)) {
+        if (updateOptions.expectedVersion !== undefined) {
+          return yield* new OptimisticLockError({
+            table: t._name,
+            expectedVersion: updateOptions.expectedVersion,
+            id,
+          });
+        }
+
         return yield* new NotFoundError({});
       }
 

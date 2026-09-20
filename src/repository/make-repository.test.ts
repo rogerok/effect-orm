@@ -12,6 +12,7 @@ import * as PGliteDriver from '#drivers/pglite.js';
 import {
   CodecError,
   NotFoundError,
+  OptimisticLockError,
   PrimaryKeyError,
   ReturningError,
   UniqueViolationError,
@@ -498,5 +499,46 @@ describe('makeRepository', () => {
 
       expect(queryCount).toBe(1);
     }),
+  );
+
+  it.effect('expected version', () =>
+    Effect.gen(function* () {
+      const usersTable = table('users', {
+        id: primaryKey(integer()),
+        name: text(),
+        version: integer(),
+      });
+
+      const db = yield* Driver;
+      const id = db.dialect.quoteIdentifier;
+      const mapColumnType = db.dialect.mapColumnType;
+      yield* db.executeRaw(
+        `CREATE TABLE ${id('users')} (
+      ${id('id')} ${mapColumnType('integer', {})}  PRIMARY KEY,
+      ${id('name')} ${mapColumnType('text', {})} NOT NULL,
+      ${id('version')} ${mapColumnType('integer', {})} NOT NULL
+    )`,
+        [],
+      );
+
+      const repo = makeRepository(usersTable);
+
+      const anna = yield* repo.save({ name: 'Anna', id: 1, version: 1 });
+
+      const updateResult = yield* repo.update(
+        1,
+        { name: 'Boris' },
+        { expectedVersion: 1 },
+      );
+      const updateResult2 = yield* Effect.result(
+        repo.update(1, { name: 'Victor' }, { expectedVersion: 1 }),
+      );
+
+      const row = yield* repo.findBy({ id: anna.id });
+
+      expect(updateResult2).toBeFailure(OptimisticLockError);
+      expect(updateResult).toEqual({ name: 'Boris', id: 1, version: 2 });
+      expect(row).toEqual({ name: 'Boris', id: 1, version: 2 });
+    }).pipe(Effect.provide([sqliteLayer, IdentityMapLayer])),
   );
 });

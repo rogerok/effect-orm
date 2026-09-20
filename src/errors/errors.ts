@@ -83,6 +83,14 @@ export class QueryInvariantError extends Data.TaggedError(
   readonly cause: unknown;
 }> {}
 
+export class OptimisticLockError extends Data.TaggedError(
+  'OptimisticLockError',
+)<{
+  readonly expectedVersion: number;
+  readonly id: number | string;
+  readonly table: string;
+}> {}
+
 // Driver-level errors. NotFound/TooMany возникают выше, на уровне execute helpers
 export type DriverError =
   | CodecError
