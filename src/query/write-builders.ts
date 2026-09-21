@@ -11,6 +11,7 @@ import type { ColumnDef } from '#schema/columns.js';
 import type { InferInsert, InferRow, InferUpdate } from '#schema/infer.js';
 import type { AnyTableDef } from '#schema/table.js';
 
+import { col } from '#compiler/ir-constructors.js';
 import { makeExpressionBuilder } from '#query/expression-builder.js';
 import { del } from '#query/statements.js';
 import { insert, update as updateStmt } from '#query/statements.js';
@@ -68,7 +69,7 @@ export class ExecutableInsert<T extends AnyTableDef, R> {
   ): ExecutableInsert<T, InferReturning<T, Cols>> {
     const ir: InsertIR = {
       ...this.toIR(),
-      returning: cols.map((c) => ({ expr: { _tag: 'Column', name: c } })),
+      returning: cols.map((c) => ({ expr: col(c) })),
     };
 
     return new ExecutableInsert<T, InferReturning<T, Cols>>(ir, this.table);
@@ -124,7 +125,7 @@ export class ExecutableUpdate<T extends AnyTableDef, R> {
   ): ExecutableUpdate<T, InferReturning<T, Cols>> {
     const ir: UpdateIR = {
       ...this.toIR(),
-      returning: cols.map((c) => ({ expr: { _tag: 'Column', name: c } })),
+      returning: cols.map((c) => ({ expr: col(c) })),
     };
 
     return new ExecutableUpdate<T, InferReturning<T, Cols>>(ir, this.table);
@@ -203,7 +204,7 @@ export class ExecutableDelete<T extends AnyTableDef, R> {
   ): ExecutableDelete<T, InferReturning<T, Cols>> {
     const ir: DeleteIR = {
       ...this.toIR(),
-      returning: cols.map((c) => ({ expr: { _tag: 'Column', name: c } })),
+      returning: cols.map((c) => ({ expr: col(c) })),
     };
 
     return new ExecutableDelete<T, InferReturning<T, Cols>>(this.table, ir);

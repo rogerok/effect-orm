@@ -1,11 +1,18 @@
 import type { Expr, Predicate } from '#compiler/ir.js';
 
+import { ExprTypeId } from '#compiler/ir.js';
+
 export const col = (name: string, table?: string): Expr => ({
   _tag: 'Column',
   name,
   table,
+  [ExprTypeId]: true,
 });
-export const lit = (value: unknown): Expr => ({ _tag: 'Literal', value });
+export const lit = (value: unknown): Expr => ({
+  _tag: 'Literal',
+  value,
+  [ExprTypeId]: true,
+});
 
 export const eq = (l: Expr, r: Expr): Predicate => ({
   _tag: 'Eq',

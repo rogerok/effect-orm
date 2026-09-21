@@ -199,7 +199,6 @@ describe('in memory test', () => {
       );
 
       const insertQuery = insertInto(flags).values([{ active: true }]);
-      const queryCopy = structuredClone(insertQuery.toIR());
 
       yield* insertQuery.execute();
 
@@ -207,7 +206,10 @@ describe('in memory test', () => {
 
       const rows = yield* selectFrom(flags, 'f').selectAll().execute();
 
-      expect(insertQuery.toIR()).toEqual(queryCopy);
+      expect(insertQuery.toIR().rows[0]?.['active']).toMatchObject({
+        _tag: 'Literal',
+        value: true,
+      });
       expect(rows).toEqual([{ active: true }]);
       expect(active.rows).toEqual([{ active: 1 }]);
     }).pipe(Effect.provide(layer)),

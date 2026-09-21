@@ -541,4 +541,66 @@ describe('makeRepository', () => {
       expect(row).toEqual({ name: 'Boris', id: 1, version: 2 });
     }).pipe(Effect.provide([sqliteLayer, IdentityMapLayer])),
   );
+
+  it.effect(
+    'hides a soft-deleted row from reads and keeps it for findIncludingDeleted',
+    () => {
+      const program = Effect.gen(function* () {
+        const usersTableWithDeleted = table(
+          'users',
+          {
+            id: primaryKey(integer()),
+            name: text(),
+            deletedAt: nullable(timestamp()),
+          },
+          { deletedAtColumn: 'deletedAt' },
+        );
+
+        const db = yield* Driver;
+        const id = db.dialect.quoteIdentifier;
+        const mapColumnType = db.dialect.mapColumnType;
+        yield* db.executeRaw(
+          `CREATE TABLE ${id('users')} (
+      ${id('id')} ${mapColumnType('integer', {})}  PRIMARY KEY,
+      ${id('name')} ${mapColumnType('text', {})} NOT NULL,
+      ${id('deletedAt')} ${mapColumnType('timestamp', {})}
+    )`,
+          [],
+        );
+
+        const anna = { name: 'Anna', id: 1 };
+        const john = { name: 'John', id: 2 };
+
+        const repo = makeRepository(usersTableWithDeleted);
+
+        yield* repo.save(anna);
+        yield* repo.save(john);
+        yield* repo.delete(1);
+
+        const findByResult = yield* repo.findBy({ id: 1 });
+        const findByIdResult = yield* repo.findById(1);
+        const findManyResult = yield* repo.findMany({});
+
+        expect(findByResult).toBeNull();
+        expect(findByIdResult).toBeNull();
+        expect(findManyResult).toEqual([{ ...john, deletedAt: null }]);
+
+        const withDeletedResult = yield* repo.findIncludingDeleted({
+          id: anna.id,
+        });
+
+        expect(withDeletedResult[0]).toMatchObject(anna);
+        expect(withDeletedResult[0]?.deletedAt).toBeInstanceOf(Date);
+
+        const findJohnByIdResult = yield* repo.findBy({ id: 2 });
+
+        expect(findJohnByIdResult).toEqual({ ...john, deletedAt: null });
+      });
+
+      return Effect.gen(function* () {
+        yield* program.pipe(Effect.provide([sqliteLayer, IdentityMapLayer]));
+        yield* program.pipe(Effect.provide([pgLayer, IdentityMapLayer]));
+      });
+    },
+  );
 });
