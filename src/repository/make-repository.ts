@@ -85,6 +85,22 @@ export const makeRepository = <T extends AnyTableDef>(
 
   const softDeleteCol = t._options?.deletedAtColumn;
 
+  if (softDeleteCol !== undefined) {
+    const column = t._columns[softDeleteCol];
+
+    if (
+      !Object.hasOwn(t._columns, softDeleteCol) ||
+      column?._type !== 'timestamp' ||
+      column._pk ||
+      !column._nullable
+    ) {
+      throw new QueryInvariantError({
+        cause:
+          'Soft-delete column must be an existing nullable non-PK timestamp',
+      });
+    }
+  }
+
   const selectQb = selectFrom(t, alias);
   const insertQb = insertInto(t);
   const deleteQb = deleteFrom(t);
@@ -192,7 +208,7 @@ export const makeRepository = <T extends AnyTableDef>(
 
         const map = yield* IdentityMapTag;
         yield* map.invalidate(t._name, id);
-      } else {
+      } else if (softDeleteCol === undefined) {
         yield* _del(id);
       }
     });

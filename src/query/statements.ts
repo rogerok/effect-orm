@@ -137,6 +137,9 @@ interface UpdateOptions<
   readonly where?: Pred;
 }
 
+export const makeUpdateEntries = <T extends AnyTableDef>(set: InferUpdate<T>) =>
+  Object.entries(set).map(([k, v]) => [k, isExpr(v) ? v : lit(v)]);
+
 export const update = <
   T extends AnyTableDef,
   R extends ReturningOption<T> | undefined = undefined,
@@ -148,9 +151,7 @@ export const update = <
   const ir: UpdateIR = {
     _tag: 'Update',
     table: table._name,
-    set: Object.fromEntries(
-      Object.entries(set).map(([k, v]) => [k, isExpr(v) ? v : lit(v)]),
-    ),
+    set: Object.fromEntries(makeUpdateEntries(set)),
     returning:
       options.returning === '*'
         ? '*'
