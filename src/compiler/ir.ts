@@ -1,10 +1,22 @@
-export type LiteralExpr = { readonly _tag: 'Literal'; readonly value: unknown };
+export const ExprTypeId = Symbol('ExprTypeId');
+export type LiteralExpr = {
+  readonly _tag: 'Literal';
+  readonly [ExprTypeId]: true;
+  readonly value: unknown;
+};
+
 export type ColumnExpr = {
   readonly _tag: 'Column';
+  readonly [ExprTypeId]: true;
   readonly name: string;
   readonly table?: string | undefined;
 };
-export type Expr = ColumnExpr | LiteralExpr;
+
+export type NowExpr = {
+  readonly _tag: 'Now';
+  readonly [ExprTypeId]: true;
+};
+export type Expr = ColumnExpr | LiteralExpr | NowExpr;
 
 export type Predicate =
   | { readonly _tag: 'And' | 'Or'; readonly preds: ReadonlyArray<Predicate> }

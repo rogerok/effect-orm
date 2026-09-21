@@ -24,7 +24,7 @@ export interface ColumnDef<
 
 export const withCodec = <TS, SQL, C extends ColumnDef>(
   c: C,
-  codecFn: (d: 'postgres' | 'sqlite') => Codec<TS, SQL>,
+  codecFn: (d: DialectId) => Codec<TS, SQL>,
 ): Omit<C, '_codec'> & {
   readonly _codec: (dialectId: DialectId) => Codec<TS, SQL>;
 } => ({

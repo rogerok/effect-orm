@@ -143,16 +143,23 @@ describe('optimize predicate', () => {
   });
 
   it('optimize select does not mutate initial ast', () => {
-    const input = {
-      ...ir,
+    const makeSelect = (): SelectIR => ({
+      _tag: 'Select',
+      from: { table: 'users' },
+      columns: [{ expr: IR.col('id') }, { expr: IR.col('name') }],
+      joins: [],
+      orderBy: [{ expr: IR.col('name'), dir: 'asc' }],
+      limit: 10,
       where: IR.and(
         IR.and(),
         IR.not(IR.not(IR.eq(IR.lit(1), IR.lit(2)))),
         IR.eq(IR.lit(1), IR.lit(2)),
       ),
-    };
+    });
 
-    const snapshot = structuredClone(input);
+    const input = makeSelect();
+
+    const snapshot = makeSelect();
 
     optimizeSelect(input);
 

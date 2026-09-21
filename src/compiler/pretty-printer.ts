@@ -47,6 +47,7 @@ const printExpr = (expr: Expr) =>
       }
       return name;
     }),
+    Match.tag('Now', () => 'NOW()'),
     Match.exhaustive,
   );
 

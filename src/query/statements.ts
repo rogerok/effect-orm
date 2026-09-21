@@ -10,6 +10,9 @@ import type {
 import type { InferInsert, InferRow, InferUpdate } from '#schema/infer.js';
 import type { AnyTableDef } from '#schema/table.js';
 
+import { col, lit } from '#compiler/ir-constructors.js';
+import { isExpr } from '#query/expressions.js';
+
 type SelectOptions = {
   readonly limit?: number;
   readonly offset?: number;
@@ -31,7 +34,7 @@ export const select = <
   ({
     _tag: 'Select',
     from: { table: table._name },
-    columns: columns.map((name) => ({ expr: { _tag: 'Column', name } })),
+    columns: columns.map((name) => ({ expr: col(name) })),
     joins: [],
     where: options.where,
     orderBy: options.orderBy ?? [],
@@ -80,16 +83,14 @@ export const insert = <
     _tag: 'Insert',
     into: table._name,
     rows: rows.map((row) =>
-      Object.fromEntries(
-        Object.entries(row).map(([k, v]) => [k, { _tag: 'Literal', value: v }]),
-      ),
+      Object.fromEntries(Object.entries(row).map(([k, v]) => [k, lit(v)])),
     ),
     returning:
       options.returning === '*'
         ? '*'
         : options.returning !== undefined
           ? (options.returning as ReadonlyArray<string>).map((name) => ({
-              expr: { _tag: 'Column', name },
+              expr: col(name),
             }))
           : null,
   };
@@ -120,7 +121,7 @@ export const del = <
         ? '*'
         : options.returning !== undefined
           ? (options.returning as ReadonlyArray<string>).map((name) => ({
-              expr: { _tag: 'Column', name },
+              expr: col(name),
             }))
           : null,
     ...(options.where === undefined ? {} : { where: options.where }),
@@ -136,6 +137,9 @@ interface UpdateOptions<
   readonly where?: Pred;
 }
 
+export const makeUpdateEntries = <T extends AnyTableDef>(set: InferUpdate<T>) =>
+  Object.entries(set).map(([k, v]) => [k, isExpr(v) ? v : lit(v)]);
+
 export const update = <
   T extends AnyTableDef,
   R extends ReturningOption<T> | undefined = undefined,
@@ -147,15 +151,13 @@ export const update = <
   const ir: UpdateIR = {
     _tag: 'Update',
     table: table._name,
-    set: Object.fromEntries(
-      Object.entries(set).map(([k, v]) => [k, { _tag: 'Literal', value: v }]),
-    ),
+    set: Object.fromEntries(makeUpdateEntries(set)),
     returning:
       options.returning === '*'
         ? '*'
         : options.returning !== undefined
           ? (options.returning as ReadonlyArray<string>).map((name) => ({
-              expr: { _tag: 'Column', name },
+              expr: col(name),
             }))
           : null,
     ...(options.where === undefined ? {} : { where: options.where }),

@@ -89,7 +89,7 @@ describe('StatementTimeoutLayer', () => {
         `SELECT id, balance FROM accounts WHERE accounts.id = ${original.dialect.placeholder(1)}`,
         [1],
       );
-
+      //TODO: fix
       expect(outcome).toBeFailure(StatementTimeoutError);
       expect(result.rows).toEqual([{ id: 1, balance: 1000 }]);
     }).pipe(Effect.provide(PGliteDriver.layer())),

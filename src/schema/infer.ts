@@ -1,7 +1,8 @@
 import type { Codec } from '#codec.js';
 import type { DialectId } from '#dialect.js';
+import type { Expr } from '#query/typed-ast.js';
 import type { ColumnDef, SqlType } from '#schema/columns.js';
-import type { TableDef } from '#schema/table.js';
+import type { AnyTableDef, TableDef } from '#schema/table.js';
 
 export interface SqlToTs {
   blob: Uint8Array;
@@ -50,13 +51,8 @@ export type InferInsert<T extends TableDef<string, any>> = {
   ]: InferColumn<T['_columns'][K]>;
 };
 
-export type InferUpdate<
-  T extends TableDef<
-    string,
-    Record<string, ColumnDef<SqlType, boolean, boolean>>
-  >,
-> = {
+export type InferUpdate<T extends AnyTableDef> = {
   [
     K in keyof T['_columns'] as T['_columns'][K]['_pk'] extends true ? never : K
-  ]?: InferColumn<T['_columns'][K]>;
+  ]?: Expr<InferColumn<T['_columns'][K]>> | InferColumn<T['_columns'][K]>;
 };

@@ -2,7 +2,8 @@ import type { Expr, Pred } from '#query/typed-ast.js';
 import type { InferColumn } from '#schema/infer.js';
 import type { AnyTableDef } from '#schema/table.js';
 
-import { lit } from '#query/expressions.js';
+import { ExprTypeId } from '#compiler/ir.js';
+import { lit, now } from '#query/expressions.js';
 import {
   and,
   between,
@@ -56,14 +57,20 @@ export interface ExpressionBuilder<S extends SourceMap> {
   lte: <T>(l: Expr<T>, r: Expr<T>) => Pred;
   neq: <T>(l: Expr<T>, r: Expr<T>) => Pred;
   not: (p: Pred) => Pred;
-
+  now: () => Expr<Date>;
   or: (...preds: Pred[]) => Pred;
 }
 
 export const makeExpressionBuilder = <
   S extends SourceMap,
 >(): ExpressionBuilder<S> => ({
-  col: (alias, column) => ({ table: alias, _tag: 'Column', name: column }),
+  col: (alias, column) => ({
+    table: alias,
+    _tag: 'Column',
+    name: column,
+    [ExprTypeId]: true,
+  }),
+  now: now,
   lit: lit,
   gte,
   lte,

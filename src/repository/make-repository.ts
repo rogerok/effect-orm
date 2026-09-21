@@ -15,6 +15,7 @@ import {
   ReturningError,
 } from '#errors/errors.js';
 import { selectFrom } from '#query/builder.js';
+import { now } from '#query/expressions.js';
 import {
   deleteFrom,
   insertInto,
@@ -82,12 +83,30 @@ export const makeRepository = <T extends AnyTableDef>(
     keyof InferRow<T> & string
   >;
 
+  const softDeleteCol = t._options?.deletedAtColumn;
+
+  if (softDeleteCol !== undefined) {
+    const column = t._columns[softDeleteCol];
+
+    if (
+      !Object.hasOwn(t._columns, softDeleteCol) ||
+      column?._type !== 'timestamp' ||
+      column._pk ||
+      !column._nullable
+    ) {
+      throw new QueryInvariantError({
+        cause:
+          'Soft-delete column must be an existing nullable non-PK timestamp',
+      });
+    }
+  }
+
   const selectQb = selectFrom(t, alias);
   const insertQb = insertInto(t);
   const deleteQb = deleteFrom(t);
   const updateQb = updateBuilder(t);
 
-  const del = (
+  const _del = (
     id: Extract<InferRow<T>[PrimaryKeyName<T>], IdentityBaseKey>,
   ): Effect.Effect<void, DriverError, Driver | IdentityMapTag> =>
     Effect.gen(function* () {
@@ -172,6 +191,28 @@ export const makeRepository = <T extends AnyTableDef>(
       return head.value;
     });
 
+  const del = (
+    id: Extract<InferRow<T>[PrimaryKeyName<T>], IdentityBaseKey>,
+    updateOptions: RepoUpdateOptions = {},
+  ) =>
+    Effect.gen(function* () {
+      if (softDeleteCol) {
+        yield* update(
+          id,
+          {
+            [softDeleteCol]: now(),
+            // TODO:избавиться от type assertion
+          } as InferUpdate<T>,
+          updateOptions,
+        );
+
+        const map = yield* IdentityMapTag;
+        yield* map.invalidate(t._name, id);
+      } else if (softDeleteCol === undefined) {
+        yield* _del(id);
+      }
+    });
+
   const findById = (
     id: Extract<InferRow<T>[PrimaryKeyName<T>], IdentityBaseKey>,
   ): Effect.Effect<InferRow<T> | null, DriverError, Driver | IdentityMapTag> =>
@@ -180,14 +221,32 @@ export const makeRepository = <T extends AnyTableDef>(
       const cached = yield* map.get<InferRow<T>>(t._name, id);
 
       if (cached) {
+        if (softDeleteCol) {
+          return cached[softDeleteCol] === null ? cached : null;
+        }
+
         return cached;
       }
 
-      const row = yield* selectQb
-        .where((b) => b.eq(b.col(alias, pk), b.lit(id)))
-        .selectAll()
-        .executeOne()
-        .pipe(Effect.map(Option.getOrNull));
+      let row: InferRow<T> | null = null;
+      if (softDeleteCol) {
+        row = yield* selectQb
+          .where((b) =>
+            b.and(
+              b.isNull(b.col(alias, softDeleteCol)),
+              b.eq(b.col(alias, pk), b.lit(id)),
+            ),
+          )
+          .selectAll()
+          .executeOne()
+          .pipe(Effect.map(Option.getOrNull));
+      } else {
+        row = yield* selectQb
+          .where((b) => b.eq(b.col(alias, pk), b.lit(id)))
+          .selectAll()
+          .executeOne()
+          .pipe(Effect.map(Option.getOrNull));
+      }
 
       if (row) {
         yield* map.set(t._name, id, row);
@@ -198,20 +257,53 @@ export const makeRepository = <T extends AnyTableDef>(
 
   const findBy = (
     criteria: Partial<InferRow<T>>,
-  ): Effect.Effect<InferRow<T> | null, DriverError, Driver> =>
-    selectQb
+  ): Effect.Effect<InferRow<T> | null, DriverError, Driver> => {
+    if (softDeleteCol) {
+      return selectQb
+        .where((b) =>
+          b.and(
+            b.isNull(b.col(alias, softDeleteCol)),
+            criteriaToPred(criteria, b, alias),
+          ),
+        )
+        .selectAll()
+        .executeOne()
+        .pipe(Effect.map(Option.getOrNull));
+    }
+
+    return selectQb
       .where((b) => criteriaToPred(criteria, b, alias))
       .selectAll()
       .executeOne()
       .pipe(Effect.map(Option.getOrNull));
+  };
 
-  const findMany = (
+  const findIncludingDeleted = (
     criteria: Partial<InferRow<T>>,
-  ): Effect.Effect<ReadonlyArray<InferRow<T>>, DriverError, Driver> =>
-    selectQb
+  ): Effect.Effect<ReadonlyArray<InferRow<T>>, DriverError, Driver> => {
+    return selectQb
       .where((b) => criteriaToPred(criteria, b, alias))
       .selectAll()
       .execute();
+  };
+
+  const findMany = (
+    criteria: Partial<InferRow<T>>,
+  ): Effect.Effect<ReadonlyArray<InferRow<T>>, DriverError, Driver> => {
+    if (softDeleteCol) {
+      return selectQb
+        .where((b) =>
+          b.and(
+            b.isNull(b.col(alias, softDeleteCol)),
+            criteriaToPred(criteria, b, alias),
+          ),
+        )
+        .selectAll()
+        .execute();
+    }
+
+    return findIncludingDeleted(criteria);
+  };
 
   const save = (
     row: InferInsert<T>,
@@ -247,5 +339,13 @@ export const makeRepository = <T extends AnyTableDef>(
       return head.value;
     });
 
-  return { findBy, findById, findMany, save, delete: del, update };
+  return {
+    findBy,
+    findById,
+    findMany,
+    save,
+    delete: del,
+    update,
+    findIncludingDeleted,
+  };
 };

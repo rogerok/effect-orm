@@ -10,7 +10,9 @@ import type {
   SelectIR,
   UpdateIR,
 } from '#compiler/ir.js';
+
 import type { Dialect } from '#dialect.js';
+import { isPostgresDialect } from '#dialect.js';
 
 export type Compiled = {
   readonly params: ReadonlyArray<unknown>;
@@ -45,6 +47,11 @@ const compileExpr = (expr: Expr, ctx: Ctx): string =>
       return table ? `${q(table)}.${q(name)}` : q(name);
     }),
     Match.tag('Literal', ({ value }) => param(ctx, value)),
+    Match.tag('Now', () =>
+      isPostgresDialect(ctx.dialect.id)
+        ? 'NOW()'
+        : `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`,
+    ),
     Match.exhaustive,
   );
 
