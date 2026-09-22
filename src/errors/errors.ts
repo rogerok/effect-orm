@@ -91,6 +91,13 @@ export class OptimisticLockError extends Data.TaggedError(
   readonly table: string;
 }> {}
 
+export class EntityAlreadyTrackedError extends Data.TaggedError(
+  'EntityAlreadyTrackedError',
+)<{
+  readonly id: number | string;
+  readonly table: string;
+}> {}
+
 // Driver-level errors. NotFound/TooMany возникают выше, на уровне execute helpers
 export type DriverError =
   | CodecError

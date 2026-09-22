@@ -31,7 +31,7 @@ import {
   withDefault,
 } from '#schema/columns.js';
 import { table } from '#schema/table.js';
-import { IdentityMapLayer } from '#uow/identity-map.js';
+import { UnitOfWorkLayer } from '#uow/unit-of-work.js';
 
 import * as SqliteDriver from '../drivers/sqlite.js';
 
@@ -92,7 +92,7 @@ describe('makeRepository', () => {
       ]);
       expect(yield* repo.findMany({ name: 'Nobody' })).toEqual([]);
       expect(yield* repo.findMany({})).toEqual([anna, boris, anotherAnna]);
-    }).pipe(Effect.provide([sqliteLayer, IdentityMapLayer])),
+    }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
   );
 
   it.effect('updates and deletes only the selected row', () =>
@@ -121,7 +121,7 @@ describe('makeRepository', () => {
       expect(yield* repo.findById(boris.id)).toEqual(boris);
       expect(yield* repo.delete(anna.id)).toBeUndefined();
       expect(yield* repo.delete(999)).toBeUndefined();
-    }).pipe(Effect.provide([sqliteLayer, IdentityMapLayer])),
+    }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
   );
 
   it.effect(
@@ -154,7 +154,7 @@ describe('makeRepository', () => {
         });
         expect(yield* repo.delete('account-17')).toBeUndefined();
         expect(yield* repo.findById('account-17')).toBeNull();
-      }).pipe(Effect.provide([sqliteLayer, IdentityMapLayer]));
+      }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer]));
     },
   );
 
@@ -168,7 +168,7 @@ describe('makeRepository', () => {
         repo.save({ id: 1, name: 'Duplicate', nickname: null }),
       );
       expect(duplicate).toBeFailure(UniqueViolationError);
-    }).pipe(Effect.provide([sqliteLayer, IdentityMapLayer])),
+    }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
   );
 
   it('rejects a table without a primary key', () => {
@@ -196,7 +196,7 @@ describe('makeRepository', () => {
           .save({ name: 'Anna', nickname: null })
           .pipe(
             Effect.provideService(Driver, driver),
-            Effect.provide(IdentityMapLayer),
+            Effect.provide(UnitOfWorkLayer),
           ),
       );
 
@@ -307,7 +307,7 @@ describe('makeRepository', () => {
       const result = yield* repo.save({ id: 1, active: true });
 
       expect(result).toEqual({ id: 1, active: true });
-    }).pipe(Effect.provide([sqliteLayer, IdentityMapLayer])),
+    }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
   );
 
   it.effect('check bool with where', () =>
@@ -335,7 +335,7 @@ describe('makeRepository', () => {
 
       expect(active).toEqual({ id: 1, active: true });
       expect(inactive).toEqual({ id: 2, active: false });
-    }).pipe(Effect.provide([sqliteLayer, IdentityMapLayer])),
+    }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
   );
 
   it.effect('encodes JSON on save and decodes the returned row', () => {
@@ -366,7 +366,7 @@ describe('makeRepository', () => {
       expect(byId).toEqual(obj);
 
       return { row };
-    }).pipe(Effect.provide(IdentityMapLayer));
+    }).pipe(Effect.provide(UnitOfWorkLayer));
 
     return Effect.gen(function* () {
       const sql = yield* program.pipe(Effect.provide(sqliteLayer));
@@ -412,7 +412,7 @@ describe('makeRepository', () => {
         { id: 2, active: 1 },
       ]);
       expect(updated).toEqual({ id: 1, active: false });
-    }).pipe(Effect.provide([sqliteLayer, IdentityMapLayer])),
+    }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
   );
 
   it.effect('preserves Date through save and findById', () => {
@@ -445,8 +445,8 @@ describe('makeRepository', () => {
       });
 
     return Effect.gen(function* () {
-      yield* program().pipe(Effect.provide([sqliteLayer, IdentityMapLayer]));
-      yield* program().pipe(Effect.provide([pgLayer, IdentityMapLayer]));
+      yield* program().pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer]));
+      yield* program().pipe(Effect.provide([pgLayer, UnitOfWorkLayer]));
     });
   });
 
@@ -492,7 +492,7 @@ describe('makeRepository', () => {
         expect(second).toBe(first);
       }).pipe(
         Effect.provideService(Driver, driver),
-        Effect.provide(IdentityMapLayer),
+        Effect.provide(UnitOfWorkLayer),
       );
 
       yield* program;
@@ -503,11 +503,15 @@ describe('makeRepository', () => {
 
   it.effect('expected version', () =>
     Effect.gen(function* () {
-      const usersTable = table('users', {
-        id: primaryKey(integer()),
-        name: text(),
-        version: integer(),
-      });
+      const usersTable = table(
+        'users',
+        {
+          id: primaryKey(integer()),
+          name: text(),
+          version: integer(),
+        },
+        { versionColumn: 'version' },
+      );
 
       const db = yield* Driver;
       const id = db.dialect.quoteIdentifier;
@@ -539,7 +543,7 @@ describe('makeRepository', () => {
       expect(updateResult2).toBeFailure(OptimisticLockError);
       expect(updateResult).toEqual({ name: 'Boris', id: 1, version: 2 });
       expect(row).toEqual({ name: 'Boris', id: 1, version: 2 });
-    }).pipe(Effect.provide([sqliteLayer, IdentityMapLayer])),
+    }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
   );
 
   it.effect(
@@ -598,8 +602,8 @@ describe('makeRepository', () => {
       });
 
       return Effect.gen(function* () {
-        yield* program.pipe(Effect.provide([sqliteLayer, IdentityMapLayer]));
-        yield* program.pipe(Effect.provide([pgLayer, IdentityMapLayer]));
+        yield* program.pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer]));
+        yield* program.pipe(Effect.provide([pgLayer, UnitOfWorkLayer]));
       });
     },
   );

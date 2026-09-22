@@ -18,7 +18,6 @@ import {
   withDefault,
 } from '#schema/columns.js';
 import { table } from '#schema/table.js';
-import { IdentityMapTag } from '#uow/identity-map.js';
 import { UnitOfWork, UnitOfWorkLayer } from '#uow/unit-of-work.js';
 
 const users = table('users', {
@@ -116,7 +115,7 @@ describe('unit of of work', () => {
 
       const saveEff = repo
         .save(user)
-        .pipe(Effect.provideService(IdentityMapTag, uow.identity));
+        .pipe(Effect.provideService(UnitOfWork, uow));
       yield* uow.register(saveEff);
 
       const identityBeforeCommit = yield* uow.identity.get<typeof user>(
@@ -159,10 +158,10 @@ describe('unit of of work', () => {
         const repo = makeRepository(users);
         const save1 = repo
           .save(user)
-          .pipe(Effect.provideService(IdentityMapTag, uow.identity));
+          .pipe(Effect.provideService(UnitOfWork, uow));
         const save2 = repo
           .save(user)
-          .pipe(Effect.provideService(IdentityMapTag, uow.identity));
+          .pipe(Effect.provideService(UnitOfWork, uow));
         yield* uow.register(save1);
         yield* uow.register(save2);
 
