@@ -4,12 +4,13 @@ import { isDeepStrictEqual } from 'node:util';
 import type { Driver } from '#drivers/driver.js';
 import type {
   DriverError,
+  EntityAlreadyTrackedError,
   NotFoundError,
   OptimisticLockError,
 } from '#errors/errors.js';
 import type { UpdateRowOptions } from '#repository/update.js';
 import type { AnyTableDef } from '#schema/table.js';
-import type { IdentityMap } from '#uow/identity-map.js';
+import type { IdentityBaseKey, IdentityMap } from '#uow/identity-map.js';
 
 import { QueryInvariantError } from '#errors/errors.js';
 import { PrimaryKeyError } from '#errors/errors.js';
@@ -20,19 +21,26 @@ import { findPrimaryKey } from '#utils/find-primary-key.js';
 
 type UoWEffect = Effect.Effect<
   unknown,
-  DriverError | NotFoundError | OptimisticLockError,
+  DriverError | EntityAlreadyTrackedError | NotFoundError | OptimisticLockError,
   Driver
 >;
 
 interface UnitOfWorkApi {
   readonly commit: Effect.Effect<
     void,
-    DriverError | NotFoundError | OptimisticLockError,
+    | DriverError
+    | EntityAlreadyTrackedError
+    | NotFoundError
+    | OptimisticLockError,
     Driver
   >;
   readonly identity: IdentityMap;
   readonly pendingCount: Effect.Effect<number>;
   readonly rollback: Effect.Effect<void>;
+  readonly isTracked: (
+    table: AnyTableDef,
+    id: IdentityBaseKey,
+  ) => Effect.Effect<boolean>;
   readonly register: (effect: UoWEffect) => Effect.Effect<void>;
   readonly track: <T extends AnyTableDef, E extends TrackedEntity>(
     table: T,
@@ -64,6 +72,21 @@ const makeUnitOfWork = Effect.gen(function* () {
 
   return UnitOfWork.of({
     identity,
+    isTracked: (table, id) =>
+      Ref.get(trackedRef).pipe(
+        Effect.map((tracked) => {
+          const primaryKey = findPrimaryKey(table);
+          for (const entry of tracked.values()) {
+            if (
+              entry.table._name === table._name &&
+              entry.snapshot[primaryKey] === id
+            ) {
+              return true;
+            }
+          }
+          return false;
+        }),
+      ),
     register: (eff: UoWEffect) =>
       Ref.update(pendingEffectsRef, (effect) => [...effect, eff]),
     pendingCount: Ref.get(pendingEffectsRef).pipe(Effect.map((s) => s.length)),

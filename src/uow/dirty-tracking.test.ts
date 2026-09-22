@@ -5,11 +5,21 @@ import { expect } from 'vitest';
 import { expectFailure } from '#config/result-matchers.js';
 import { Driver } from '#drivers/driver.js';
 import * as SqliteDriver from '#drivers/sqlite.js';
-import { OptimisticLockError } from '#errors/errors.js';
+import {
+  EntityAlreadyTrackedError,
+  OptimisticLockError,
+} from '#errors/errors.js';
 import { selectFrom } from '#query/builder.js';
 import { insertInto } from '#query/write-builders.js';
 import { makeRepository } from '#repository/make-repository.js';
-import { integer, json, primaryKey, text } from '#schema/columns.js';
+import {
+  integer,
+  json,
+  nullable,
+  primaryKey,
+  text,
+  timestamp,
+} from '#schema/columns.js';
 import { table } from '#schema/table.js';
 import { UnitOfWork, UnitOfWorkLayer } from '#uow/unit-of-work.js';
 
@@ -262,5 +272,209 @@ describe('dirty tracking', () => {
         expect(reloadedAnna).toMatchObject({ age: 18, revision: 3 });
         expect(reloadedBoris).toMatchObject({ age: 35, revision: 8 });
       }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
+  );
+
+  it.effect('rejects explicit updates of tracked entities until rollback', () =>
+    Effect.gen(function* () {
+      yield* createVersionedUsers;
+      const repo = makeRepository(versionedUsers);
+      const uow = yield* UnitOfWork;
+      const explicitUpdate = repo.update(
+        1,
+        { name: 'Maria' },
+        { expectedVersion: 3 },
+      );
+      const anna = yield* repo.findById(1);
+      if (anna === null) {
+        return yield* Effect.die(new Error('Expected user with id 1 to exist'));
+      }
+
+      const cleanFailure = yield* Effect.result(explicitUpdate);
+      expect(cleanFailure).toBeFailure(EntityAlreadyTrackedError);
+      expect(expectFailure(cleanFailure)).toMatchObject({
+        table: 'versioned_users',
+        id: 1,
+      });
+      expect(yield* repo.findBy({ id: 1 })).toMatchObject({
+        name: 'Anna',
+        age: 18,
+        revision: 3,
+      });
+      expect(yield* repo.findById(1)).toBe(anna);
+
+      anna.age = 22;
+      const dirtyFailure = yield* Effect.result(explicitUpdate);
+      expect(dirtyFailure).toBeFailure(EntityAlreadyTrackedError);
+      expect(anna).toMatchObject({ name: 'Anna', age: 22, revision: 3 });
+      expect(yield* repo.findBy({ id: 1 })).toMatchObject({
+        name: 'Anna',
+        age: 18,
+        revision: 3,
+      });
+
+      yield* uow.commit;
+      expect(anna).toMatchObject({ name: 'Anna', age: 22, revision: 4 });
+      const committedFailure = yield* Effect.result(
+        repo.update(1, { name: 'Maria' }, { expectedVersion: 4 }),
+      );
+      expect(committedFailure).toBeFailure(EntityAlreadyTrackedError);
+      expect(yield* repo.findBy({ id: 1 })).toEqual(anna);
+
+      yield* uow.rollback;
+      const updated = yield* repo.update(
+        1,
+        { name: 'Maria' },
+        { expectedVersion: 4 },
+      );
+      expect(updated).toMatchObject({ name: 'Maria', age: 22, revision: 5 });
+      expect(yield* repo.findBy({ id: 1 })).toEqual(updated);
+      expect(anna).toMatchObject({ name: 'Anna', age: 22, revision: 4 });
+    }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
+  );
+
+  it.effect(
+    'checks snapshot keys and table names independently of the identity cache',
+    () =>
+      Effect.gen(function* () {
+        const accounts = table('accounts', {
+          externalId: primaryKey(text()),
+          name: text(),
+        });
+        const otherAccounts = table('other_accounts', {
+          externalId: primaryKey(text()),
+          name: text(),
+        });
+        const db = yield* Driver;
+        yield* db.executeRaw(
+          'CREATE TABLE accounts (externalId TEXT PRIMARY KEY, name TEXT NOT NULL)',
+          [],
+        );
+        yield* db.executeRaw(
+          'CREATE TABLE other_accounts (externalId TEXT PRIMARY KEY, name TEXT NOT NULL)',
+          [],
+        );
+        yield* insertInto(accounts)
+          .values([{ externalId: 'account-1', name: 'Anna' }])
+          .execute();
+        yield* insertInto(otherAccounts)
+          .values([{ externalId: 'account-1', name: 'Boris' }])
+          .execute();
+        const uow = yield* UnitOfWork;
+        const repo = makeRepository(accounts);
+        const trackingCheck = uow.isTracked(accounts, 'account-1');
+        expect(yield* trackingCheck).toBe(false);
+
+        const anna = yield* repo.findById('account-1');
+        if (anna === null) {
+          return yield* Effect.die(new Error('Expected seeded account'));
+        }
+        anna.externalId = 'local-id';
+        yield* uow.identity.clear;
+
+        expect(yield* trackingCheck).toBe(true);
+        expect(yield* uow.isTracked(accounts, 'local-id')).toBe(false);
+        expect(yield* uow.isTracked(otherAccounts, 'account-1')).toBe(false);
+        const sameTable = table('accounts', {
+          externalId: primaryKey(text()),
+          name: text(),
+        });
+        const rejected = yield* Effect.result(
+          makeRepository(sameTable).update('account-1', { name: 'Changed' }),
+        );
+        expect(rejected).toBeFailure(EntityAlreadyTrackedError);
+        expect(expectFailure(rejected)).toMatchObject({
+          table: 'accounts',
+          id: 'account-1',
+        });
+        expect(yield* repo.findBy({ externalId: 'account-1' })).toEqual({
+          externalId: 'account-1',
+          name: 'Anna',
+        });
+
+        const otherRepo = makeRepository(otherAccounts);
+        yield* otherRepo.update('account-1', { name: 'Changed' });
+        expect(yield* otherRepo.findBy({ externalId: 'account-1' })).toEqual({
+          externalId: 'account-1',
+          name: 'Changed',
+        });
+
+        yield* uow.rollback;
+        expect(yield* trackingCheck).toBe(false);
+      }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
+  );
+
+  it.effect(
+    'rejects soft deletion of tracked rows without hiding or changing them',
+    () =>
+      Effect.gen(function* () {
+        const accounts = table(
+          'accounts',
+          {
+            id: primaryKey(integer()),
+            name: text(),
+            deletedAt: nullable(timestamp()),
+          },
+          { deletedAtColumn: 'deletedAt' },
+        );
+        const db = yield* Driver;
+        yield* db.executeRaw(
+          'CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT NOT NULL, deletedAt TEXT)',
+          [],
+        );
+        yield* insertInto(accounts)
+          .values([{ id: 1, name: 'Anna', deletedAt: null }])
+          .execute();
+        const uow = yield* UnitOfWork;
+        const repo = makeRepository(accounts);
+        const anna = yield* repo.findById(1);
+        if (anna === null) {
+          return yield* Effect.die(new Error('Expected seeded account'));
+        }
+
+        const rejected = yield* Effect.result(repo.delete(1));
+        expect(rejected).toBeFailure(EntityAlreadyTrackedError);
+        expect(expectFailure(rejected)).toMatchObject({
+          table: 'accounts',
+          id: 1,
+        });
+        expect(anna.deletedAt).toBeNull();
+        expect(yield* repo.findById(1)).toBe(anna);
+        expect(yield* repo.findBy({ id: 1 })).toEqual({
+          id: 1,
+          name: 'Anna',
+          deletedAt: null,
+        });
+
+        yield* uow.rollback;
+        yield* repo.delete(1);
+        expect(yield* repo.findBy({ id: 1 })).toBeNull();
+        const deleted = yield* repo.findIncludingDeleted({ id: 1 });
+        expect(deleted[0]?.deletedAt).toBeInstanceOf(Date);
+      }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
+  );
+
+  it.effect('propagates rejected registered updates through commit', () =>
+    Effect.gen(function* () {
+      yield* createVersionedUsers;
+      const repo = makeRepository(versionedUsers);
+      const uow = yield* UnitOfWork;
+      yield* uow.register(
+        repo
+          .update(1, { name: 'Maria' }, { expectedVersion: 3 })
+          .pipe(Effect.provideService(UnitOfWork, uow)),
+      );
+      const anna = yield* repo.findById(1);
+
+      const rejected = yield* Effect.result(uow.commit);
+      expect(rejected).toBeFailure(EntityAlreadyTrackedError);
+      expect(yield* repo.findBy({ id: 1 })).toMatchObject({
+        name: 'Anna',
+        revision: 3,
+      });
+      expect(yield* repo.findById(1)).toBe(anna);
+      expect(yield* uow.pendingCount).toBe(1);
+      yield* uow.rollback;
+      expect(yield* uow.pendingCount).toBe(0);
+    }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
   );
 });

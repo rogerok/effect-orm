@@ -13,6 +13,7 @@ import type { InferInsert, InferRow, InferUpdate } from '#schema/infer.js';
 import type { IdentityBaseKey } from '#uow/identity-map.js';
 
 import {
+  EntityAlreadyTrackedError,
   PrimaryKeyError,
   QueryInvariantError,
   ReturningError,
@@ -100,19 +101,29 @@ export const makeRepository = <T extends AnyTableDef>(
       yield* map.invalidate(t._name, id);
     });
 
+  /**
+   * Tracked rows must be changed through their live objects and `commit`.
+   * Explicit updates remain rejected after `commit`; `rollback` clears tracking.
+   */
   const update = (
     id: Extract<InferRow<T>[PrimaryKeyName<T>], IdentityBaseKey>,
     rows: InferUpdate<T>,
     updateOptions: RepoUpdateOptions = {},
   ): Effect.Effect<
     InferRow<T>,
-    DriverError | NotFoundError | OptimisticLockError,
+    | DriverError
+    | EntityAlreadyTrackedError
+    | NotFoundError
+    | OptimisticLockError,
     Driver | UnitOfWork
   > =>
     Effect.gen(function* () {
-      const result = yield* updateRow(t, id, rows, updateOptions);
-
       const uow = yield* UnitOfWork;
+      if (yield* uow.isTracked(t, id)) {
+        return yield* new EntityAlreadyTrackedError({ table: t._name, id });
+      }
+
+      const result = yield* updateRow(t, id, rows, updateOptions);
       yield* uow.identity.set(t._name, id, result);
 
       return result;
@@ -123,7 +134,10 @@ export const makeRepository = <T extends AnyTableDef>(
     updateOptions: RepoUpdateOptions = {},
   ): Effect.Effect<
     void,
-    DriverError | NotFoundError | OptimisticLockError,
+    | DriverError
+    | EntityAlreadyTrackedError
+    | NotFoundError
+    | OptimisticLockError,
     Driver | UnitOfWork
   > =>
     Effect.gen(function* () {
