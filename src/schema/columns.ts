@@ -1,9 +1,8 @@
 import type { AnyCodec, Codec } from '#codec.js';
 import type { DialectId } from '#dialect.js';
+import type { AnyTableDef } from '#schema/table.js';
 
-import { jsonCodec } from '#codec.js';
-import { dateCodec } from '#codec.js';
-import { booleanCodec } from '#codec.js';
+import { booleanCodec, dateCodec, jsonCodec } from '#codec.js';
 
 export type SqlType =
   'blob' | 'boolean' | 'integer' | 'json' | 'real' | 'text' | 'timestamp';
@@ -99,3 +98,9 @@ export const nullable = <C extends ColumnDef<SqlType, false, boolean>>(
 export const primaryKey = <C extends ColumnDef<SqlType, boolean, false>>(
   c: C,
 ): { readonly _pk: true } & Omit<C, '_pk'> => ({ ...c, _pk: true });
+
+export type PrimaryKeyName<T extends AnyTableDef> = {
+  [K in keyof T['_columns'] & string]: true extends T['_columns'][K]['_pk']
+    ? K
+    : never;
+}[keyof T['_columns'] & string];

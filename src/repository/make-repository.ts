@@ -1,34 +1,29 @@
 import { Array, Effect, Option } from 'effect';
 
 import type { Driver } from '#drivers/driver.js';
-import type { DriverError } from '#errors/errors.js';
+import type {
+  DriverError,
+  NotFoundError,
+  OptimisticLockError,
+} from '#errors/errors.js';
 import type { ExpressionBuilder, Source } from '#query/expression-builder.js';
-import type { Expr, Pred } from '#query/typed-ast.js';
+import type { Pred } from '#query/typed-ast.js';
+import type { PrimaryKeyName } from '#schema/columns.js';
 import type { InferInsert, InferRow, InferUpdate } from '#schema/infer.js';
 import type { IdentityBaseKey } from '#uow/identity-map.js';
 
 import {
-  NotFoundError,
-  OptimisticLockError,
   PrimaryKeyError,
   QueryInvariantError,
   ReturningError,
 } from '#errors/errors.js';
 import { selectFrom } from '#query/builder.js';
 import { now } from '#query/expressions.js';
-import {
-  deleteFrom,
-  insertInto,
-  update as updateBuilder,
-} from '#query/write-builders.js';
+import { deleteFrom, insertInto } from '#query/write-builders.js';
+import { updateRow } from '#repository/update.js';
 import { type AnyTableDef } from '#schema/table.js';
-import { IdentityMapTag } from '#uow/identity-map.js';
-
-type PrimaryKeyName<T extends AnyTableDef> = {
-  [K in keyof T['_columns'] & string]: T['_columns'][K]['_pk'] extends true
-    ? K
-    : never;
-}[keyof T['_columns'] & string];
+import { UnitOfWork } from '#uow/unit-of-work.js';
+import { findPrimaryKey } from '#utils/find-primary-key.js';
 
 interface MakeRepositoryOptions {
   readonly alias?: string;
@@ -58,20 +53,6 @@ const criteriaToPred = <T extends AnyTableDef>(
       return acc;
     }, []),
   );
-
-const findPrimaryKey = <T extends AnyTableDef>(table: T): PrimaryKeyName<T> => {
-  const entries = Object.entries(table._columns);
-  const pk = entries[entries.findIndex(([__, v]) => v._pk)]?.[0];
-
-  if (pk === undefined) {
-    //отсутствие первичного ключа можно считать нарушением предусловия фабрики: репозиторий требует таблицу с первичным ключом.
-    throw new PrimaryKeyError({
-      cause: 'Primary key should exist in the table',
-    });
-  }
-
-  return pk as PrimaryKeyName<T>;
-};
 
 export const makeRepository = <T extends AnyTableDef>(
   t: T,
@@ -104,13 +85,13 @@ export const makeRepository = <T extends AnyTableDef>(
   const selectQb = selectFrom(t, alias);
   const insertQb = insertInto(t);
   const deleteQb = deleteFrom(t);
-  const updateQb = updateBuilder(t);
 
-  const _del = (
+  const hardDelete = (
     id: Extract<InferRow<T>[PrimaryKeyName<T>], IdentityBaseKey>,
-  ): Effect.Effect<void, DriverError, Driver | IdentityMapTag> =>
+  ): Effect.Effect<void, DriverError, Driver | UnitOfWork> =>
     Effect.gen(function* () {
-      const map = yield* IdentityMapTag;
+      const uow = yield* UnitOfWork;
+      const map = uow.identity;
 
       yield* deleteQb
         .where((b) => b.eq(b.col(t._name, pk), b.lit(id)))
@@ -126,75 +107,25 @@ export const makeRepository = <T extends AnyTableDef>(
   ): Effect.Effect<
     InferRow<T>,
     DriverError | NotFoundError | OptimisticLockError,
-    Driver | IdentityMapTag
+    Driver | UnitOfWork
   > =>
     Effect.gen(function* () {
-      let currentRows = rows;
-      let nextVersion: number | undefined = undefined;
-      const versionColumn = t._columns['version'];
+      const result = yield* updateRow(t, id, rows, updateOptions);
 
-      if (updateOptions.expectedVersion !== undefined) {
-        if (
-          versionColumn?._nullable ||
-          versionColumn?._pk ||
-          versionColumn?._type !== 'integer' ||
-          versionColumn?._codec !== undefined
-        ) {
-          return yield* Effect.die(
-            new QueryInvariantError({
-              cause:
-                'Version column should be not nullable not PK integer without codec',
-            }),
-          );
-        }
+      const uow = yield* UnitOfWork;
+      yield* uow.identity.set(t._name, id, result);
 
-        nextVersion = updateOptions.expectedVersion + 1;
-        currentRows = { ...currentRows, version: nextVersion };
-      }
-
-      const result = yield* updateQb
-        .set(currentRows)
-        .where((b) => {
-          const p = b.eq(b.col(t._name, pk), b.lit(id));
-
-          if (updateOptions.expectedVersion !== undefined) {
-            return b.and(
-              p,
-              b.eq(
-                b.col(t._name, 'version') as Expr<number>,
-                b.lit(updateOptions.expectedVersion),
-              ),
-            );
-          }
-          return p;
-        })
-        .returning(...colNames)
-        .execute();
-
-      const head = Array.head(result);
-
-      if (Option.isNone(head)) {
-        if (updateOptions.expectedVersion !== undefined) {
-          return yield* new OptimisticLockError({
-            table: t._name,
-            expectedVersion: updateOptions.expectedVersion,
-            id,
-          });
-        }
-
-        return yield* new NotFoundError({});
-      }
-
-      const map = yield* IdentityMapTag;
-      yield* map.set(t._name, id, head.value);
-
-      return head.value;
+      return result;
     });
 
   const del = (
     id: Extract<InferRow<T>[PrimaryKeyName<T>], IdentityBaseKey>,
     updateOptions: RepoUpdateOptions = {},
-  ) =>
+  ): Effect.Effect<
+    void,
+    DriverError | NotFoundError | OptimisticLockError,
+    Driver | UnitOfWork
+  > =>
     Effect.gen(function* () {
       if (softDeleteCol) {
         yield* update(
@@ -206,50 +137,48 @@ export const makeRepository = <T extends AnyTableDef>(
           updateOptions,
         );
 
-        const map = yield* IdentityMapTag;
-        yield* map.invalidate(t._name, id);
-      } else if (softDeleteCol === undefined) {
-        yield* _del(id);
+        const uow = yield* UnitOfWork;
+        yield* uow.identity.invalidate(t._name, id);
+      } else {
+        yield* hardDelete(id);
       }
     });
 
   const findById = (
     id: Extract<InferRow<T>[PrimaryKeyName<T>], IdentityBaseKey>,
-  ): Effect.Effect<InferRow<T> | null, DriverError, Driver | IdentityMapTag> =>
+  ): Effect.Effect<InferRow<T> | null, DriverError, Driver | UnitOfWork> =>
     Effect.gen(function* () {
-      const map = yield* IdentityMapTag;
-      const cached = yield* map.get<InferRow<T>>(t._name, id);
+      const uow = yield* UnitOfWork;
+      const cached = yield* uow.identity.get<InferRow<T>>(t._name, id);
 
       if (cached) {
-        if (softDeleteCol) {
+        if (softDeleteCol !== undefined) {
           return cached[softDeleteCol] === null ? cached : null;
         }
 
         return cached;
       }
 
-      let row: InferRow<T> | null = null;
-      if (softDeleteCol) {
-        row = yield* selectQb
-          .where((b) =>
-            b.and(
+      const row = yield* selectQb
+        .where((b) => {
+          const primaryKeyPredicate = b.eq(b.col(alias, pk), b.lit(id));
+
+          if (softDeleteCol !== undefined) {
+            return b.and(
               b.isNull(b.col(alias, softDeleteCol)),
-              b.eq(b.col(alias, pk), b.lit(id)),
-            ),
-          )
-          .selectAll()
-          .executeOne()
-          .pipe(Effect.map(Option.getOrNull));
-      } else {
-        row = yield* selectQb
-          .where((b) => b.eq(b.col(alias, pk), b.lit(id)))
-          .selectAll()
-          .executeOne()
-          .pipe(Effect.map(Option.getOrNull));
-      }
+              primaryKeyPredicate,
+            );
+          }
+
+          return primaryKeyPredicate;
+        })
+        .selectAll()
+        .executeOne()
+        .pipe(Effect.map(Option.getOrNull));
 
       if (row) {
-        yield* map.set(t._name, id, row);
+        yield* uow.identity.set(t._name, id, row);
+        yield* uow.track(t, row);
       }
 
       return row;
@@ -257,26 +186,23 @@ export const makeRepository = <T extends AnyTableDef>(
 
   const findBy = (
     criteria: Partial<InferRow<T>>,
-  ): Effect.Effect<InferRow<T> | null, DriverError, Driver> => {
-    if (softDeleteCol) {
-      return selectQb
-        .where((b) =>
-          b.and(
-            b.isNull(b.col(alias, softDeleteCol)),
-            criteriaToPred(criteria, b, alias),
-          ),
-        )
-        .selectAll()
-        .executeOne()
-        .pipe(Effect.map(Option.getOrNull));
-    }
+  ): Effect.Effect<InferRow<T> | null, DriverError, Driver> =>
+    selectQb
+      .where((b) => {
+        const criteriaPredicate = criteriaToPred(criteria, b, alias);
 
-    return selectQb
-      .where((b) => criteriaToPred(criteria, b, alias))
+        if (softDeleteCol !== undefined) {
+          return b.and(
+            b.isNull(b.col(alias, softDeleteCol)),
+            criteriaPredicate,
+          );
+        }
+
+        return criteriaPredicate;
+      })
       .selectAll()
       .executeOne()
       .pipe(Effect.map(Option.getOrNull));
-  };
 
   const findIncludingDeleted = (
     criteria: Partial<InferRow<T>>,
@@ -307,7 +233,7 @@ export const makeRepository = <T extends AnyTableDef>(
 
   const save = (
     row: InferInsert<T>,
-  ): Effect.Effect<InferRow<T>, DriverError, Driver | IdentityMapTag> =>
+  ): Effect.Effect<InferRow<T>, DriverError, Driver | UnitOfWork> =>
     Effect.gen(function* () {
       const result = yield* insertQb
         .values([row])
@@ -333,7 +259,8 @@ export const makeRepository = <T extends AnyTableDef>(
         );
       }
 
-      const map = yield* IdentityMapTag;
+      const uow = yield* UnitOfWork;
+      const map = uow.identity;
       yield* map.set<InferRow<T>>(t._name, rowId, head.value);
 
       return head.value;
