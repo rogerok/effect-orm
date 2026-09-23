@@ -154,6 +154,11 @@ export const makeRepository = <T extends AnyTableDef>(
         const uow = yield* UnitOfWork;
         yield* uow.identity.invalidate(t._name, id);
       } else {
+        const uow = yield* UnitOfWork;
+        if (yield* uow.isTracked(t, id)) {
+          return yield* new EntityAlreadyTrackedError({ table: t._name, id });
+        }
+
         yield* hardDelete(id);
       }
     });
@@ -166,10 +171,11 @@ export const makeRepository = <T extends AnyTableDef>(
       const cached = yield* uow.identity.get<InferRow<T>>(t._name, id);
 
       if (cached) {
-        if (softDeleteCol !== undefined) {
-          return cached[softDeleteCol] === null ? cached : null;
+        if (softDeleteCol !== undefined && cached[softDeleteCol] !== null) {
+          return null;
         }
 
+        yield* uow.track(t, cached);
         return cached;
       }
 

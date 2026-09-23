@@ -112,6 +112,97 @@ describe('dirty tracking', () => {
     }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
   );
 
+  it.effect('tracks an entity returned from the identity map after save', () =>
+    Effect.gen(function* () {
+      const db = yield* Driver;
+      yield* db.executeRaw(
+        'CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER NOT NULL)',
+        [],
+      );
+      const repo = makeRepository(users);
+      const uow = yield* UnitOfWork;
+      const saved = yield* repo.save({ id: 1, name: 'Anna', age: 18 });
+
+      const anna = yield* repo.findById(1);
+      expect(anna).toBe(saved);
+      expect(yield* uow.isTracked(users, 1)).toBe(true);
+      if (anna === null) {
+        return yield* Effect.die(
+          new Error('Expected saved user in identity map'),
+        );
+      }
+
+      anna.age = 22;
+      yield* uow.commit;
+
+      expect(yield* selectFrom(users, 'u').selectAll().execute()).toEqual([
+        { id: 1, name: 'Anna', age: 22 },
+      ]);
+    }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
+  );
+
+  it.effect(
+    'tracks an entity returned from the identity map after update',
+    () =>
+      Effect.gen(function* () {
+        const db = yield* Driver;
+        yield* db.executeRaw(
+          'CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, age INTEGER NOT NULL)',
+          [],
+        );
+        yield* insertInto(users)
+          .values([{ id: 1, name: 'Anna', age: 18 }])
+          .execute();
+        const repo = makeRepository(users);
+        const uow = yield* UnitOfWork;
+        const updated = yield* repo.update(1, { name: 'Maria' });
+
+        const maria = yield* repo.findById(1);
+        expect(maria).toBe(updated);
+        expect(yield* uow.isTracked(users, 1)).toBe(true);
+        if (maria === null) {
+          return yield* Effect.die(
+            new Error('Expected updated user in identity map'),
+          );
+        }
+
+        maria.age = 22;
+        yield* uow.commit;
+
+        expect(yield* selectFrom(users, 'u').selectAll().execute()).toEqual([
+          { id: 1, name: 'Maria', age: 22 },
+        ]);
+      }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
+  );
+
+  it.effect('does not track a soft-deleted entity hidden by findById', () =>
+    Effect.gen(function* () {
+      const accounts = table(
+        'accounts',
+        {
+          id: primaryKey(integer()),
+          name: text(),
+          deletedAt: nullable(timestamp()),
+        },
+        { deletedAtColumn: 'deletedAt' },
+      );
+      const db = yield* Driver;
+      yield* db.executeRaw(
+        'CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT NOT NULL, deletedAt TEXT)',
+        [],
+      );
+      const repo = makeRepository(accounts);
+      const uow = yield* UnitOfWork;
+      yield* repo.save({
+        id: 1,
+        name: 'Anna',
+        deletedAt: new Date('2026-01-01T00:00:00.000Z'),
+      });
+
+      expect(yield* repo.findById(1)).toBeNull();
+      expect(yield* uow.isTracked(accounts, 1)).toBe(false);
+    }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
+  );
   it.effect(
     'preserves entity identity and advances versions only on changes',
     () =>

@@ -18,7 +18,9 @@ type VersionKeyName<
   [K in keyof Cols & string]: Cols[K]['_pk'] extends false
     ? Cols[K]['_nullable'] extends false
       ? Cols[K]['_type'] extends 'integer'
-        ? K
+        ? Cols[K] extends { readonly _codec: unknown }
+          ? never
+          : K
         : never
       : never
     : never;

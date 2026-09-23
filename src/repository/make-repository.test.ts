@@ -31,7 +31,7 @@ import {
   withDefault,
 } from '#schema/columns.js';
 import { table } from '#schema/table.js';
-import { UnitOfWorkLayer } from '#uow/unit-of-work.js';
+import { UnitOfWork, UnitOfWorkLayer } from '#uow/unit-of-work.js';
 
 import * as SqliteDriver from '../drivers/sqlite.js';
 
@@ -141,12 +141,14 @@ describe('makeRepository', () => {
           [],
         );
 
+        const uow = yield* UnitOfWork;
         const saved = yield* repo.save({
           externalId: 'account-17',
           id: 999,
           name: 'Anna',
         });
         expect(yield* repo.findById('account-17')).toEqual(saved);
+        yield* uow.rollback;
         expect(yield* repo.update('account-17', { name: 'Changed' })).toEqual({
           externalId: 'account-17',
           id: 999,
