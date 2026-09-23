@@ -98,6 +98,16 @@ export const makeRepository = <
     }
   }
 
+  if (softDeleteCol === undefined && options?.relations) {
+    for (const relation of Object.values(options.relations.relations)) {
+      if (relation.table._options?.deletedAtColumn !== undefined) {
+        throw new QueryInvariantError({
+          cause: `Cannot hard-delete ${t._name}: related table ${relation.table._name} uses soft delete`,
+        });
+      }
+    }
+  }
+
   const selectQb = selectFrom(t, alias);
   const insertQb = insertInto(t);
   const deleteQb = deleteFrom(t);
@@ -128,10 +138,6 @@ export const makeRepository = <
 
             if (Option.isSome(row)) {
               const effects = Object.values(relations).map((relation) =>
-                // Каскад физически удаляет дочерние строки, даже если у дочерней таблицы
-                // задан `deletedAtColumn`. После этого `findIncludingDeleted` не найдёт их.
-                // Нужно определить политику для такого сочетания или явно запретить его.
-
                 deleteFrom(relation.table)
                   .where((b) =>
                     b.eq(
