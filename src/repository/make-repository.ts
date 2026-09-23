@@ -10,6 +10,7 @@ import type { ExpressionBuilder, Source } from '#query/expression-builder.js';
 import type { Pred } from '#query/typed-ast.js';
 import type { PrimaryKeyName } from '#schema/columns.js';
 import type { InferInsert, InferRow, InferUpdate } from '#schema/infer.js';
+import type { Relations, TableRelations } from '#schema/relations.js';
 import type { IdentityBaseKey } from '#uow/identity-map.js';
 
 import {
@@ -23,11 +24,19 @@ import { now } from '#query/expressions.js';
 import { deleteFrom, insertInto } from '#query/write-builders.js';
 import { updateRow } from '#repository/update.js';
 import { type AnyTableDef } from '#schema/table.js';
+import { withTransaction } from '#uow/transaction.js';
 import { UnitOfWork } from '#uow/unit-of-work.js';
 import { findPrimaryKey } from '#utils/find-primary-key.js';
 
-interface MakeRepositoryOptions {
+interface MakeRepositoryOptions<
+  T extends AnyTableDef,
+  R extends Record<string, Relations<T, AnyTableDef>> = Record<
+    string,
+    Relations<T, AnyTableDef>
+  >,
+> {
   readonly alias?: string;
+  readonly relations?: TableRelations<T, R>;
 }
 
 interface RepoUpdateOptions {
@@ -55,9 +64,15 @@ const criteriaToPred = <T extends AnyTableDef>(
     }, []),
   );
 
-export const makeRepository = <T extends AnyTableDef>(
+export const makeRepository = <
+  T extends AnyTableDef,
+  R extends Record<string, Relations<T, AnyTableDef>> = Record<
+    string,
+    Relations<T, AnyTableDef>
+  >,
+>(
   t: T,
-  options?: MakeRepositoryOptions,
+  options?: MakeRepositoryOptions<T, R>,
 ) => {
   const alias = options?.alias ?? t._name;
   const pk = findPrimaryKey(t);
@@ -93,12 +108,86 @@ export const makeRepository = <T extends AnyTableDef>(
     Effect.gen(function* () {
       const uow = yield* UnitOfWork;
       const map = uow.identity;
-
-      yield* deleteQb
+      const deleteEff = deleteQb
         .where((b) => b.eq(b.col(t._name, pk), b.lit(id)))
         .execute();
 
-      yield* map.invalidate(t._name, id);
+      yield* withTransaction(
+        Effect.gen(function* () {
+          if (options?.relations) {
+            const { relations } = options.relations;
+
+            const row = yield* selectQb
+              .where((b) => b.eq(b.col(alias, pk), b.lit(id)))
+              .selectAll()
+              .executeOne();
+
+            if (Option.isSome(row)) {
+              const effects = Object.values(relations).map((relation) =>
+                deleteFrom(relation.table)
+                  .where((b) => {
+                    const preds: Pred[] = [];
+
+                    for (const [sourceKey, targetKey] of Object.entries(
+                      relation.columns,
+                    )) {
+                      preds.push(
+                        b.eq(
+                          b.col(relation.table._name, targetKey),
+                          b.lit(row.value[sourceKey]),
+                        ),
+                      );
+                    }
+
+                    return b.and(...preds);
+                  })
+                  .returning(findPrimaryKey(relation.table))
+                  .execute()
+                  .pipe(
+                    Effect.map((result) => ({
+                      row: result,
+                      table: relation.table,
+                    })),
+                  ),
+              );
+
+              const deletedRows = yield* Effect.all(effects, {
+                concurrency: 1,
+              });
+
+              yield* Effect.forEach(
+                deletedRows,
+                ({ table, row: children }) =>
+                  Effect.forEach(
+                    children,
+                    (r) =>
+                      Effect.gen(function* () {
+                        const key = r[findPrimaryKey(table)];
+                        if (
+                          typeof key === 'string' ||
+                          typeof key === 'number'
+                        ) {
+                          yield* map.invalidate(table._name, key);
+                        }
+                      }),
+                    {
+                      discard: true,
+                    },
+                  ),
+                {
+                  discard: true,
+                },
+              );
+            }
+
+            yield* deleteEff;
+            yield* map.invalidate(t._name, id);
+          } else {
+            yield* deleteEff;
+            yield* map.invalidate(t._name, id);
+          }
+        }),
+      );
     });
 
   /**

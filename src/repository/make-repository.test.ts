@@ -11,6 +11,7 @@ import { Driver } from '#drivers/driver.js';
 import * as PGliteDriver from '#drivers/pglite.js';
 import {
   CodecError,
+  ForeignKeyViolationError,
   NotFoundError,
   OptimisticLockError,
   PrimaryKeyError,
@@ -30,6 +31,7 @@ import {
   withCodec,
   withDefault,
 } from '#schema/columns.js';
+import { relations } from '#schema/relations.js';
 import { table } from '#schema/table.js';
 import { UnitOfWork, UnitOfWorkLayer } from '#uow/unit-of-work.js';
 
@@ -55,6 +57,74 @@ const createUsers = Effect.gen(function* () {
       ${id('name')} TEXT NOT NULL,
       ${id('nickname')} TEXT,
       ${id('age')} INTEGER NOT NULL DEFAULT 18
+    )`,
+    [],
+  );
+});
+
+const cascadeUsers = table('cascade_users', {
+  id: primaryKey(integer()),
+  name: text(),
+});
+
+const cascadePosts = table('cascade_posts', {
+  postId: primaryKey(integer()),
+  authorId: integer(),
+});
+
+const cascadeComments = table('cascade_comments', {
+  commentId: primaryKey(integer()),
+  userId: integer(),
+  body: text(),
+});
+
+const userRelations = relations(cascadeUsers, ({ many }) => ({
+  posts: many(cascadePosts, {
+    onDelete: 'cascade',
+    columns: { id: 'authorId' },
+  }),
+  comments: many(cascadeComments, {
+    onDelete: 'cascade',
+    columns: { id: 'userId' },
+  }),
+}));
+
+const sqliteFkLayer = SqliteDriver.layer({
+  path: ':memory:',
+  enableForeignKeys: true,
+});
+
+const createCascadeSchema = Effect.gen(function* () {
+  const db = yield* Driver;
+  const id = db.dialect.quoteIdentifier;
+  const mapColumnType = db.dialect.mapColumnType;
+
+  yield* db.executeRaw(
+    `CREATE TABLE ${id('cascade_users')} (
+      ${id('id')} ${mapColumnType('integer', {})} PRIMARY KEY,
+      ${id('name')} ${mapColumnType('text', {})} NOT NULL
+    )`,
+    [],
+  );
+  yield* db.executeRaw(
+    `CREATE TABLE ${id('cascade_posts')} (
+      ${id('postId')} ${mapColumnType('integer', {})} PRIMARY KEY,
+      ${id('authorId')} ${mapColumnType('integer', {})} NOT NULL REFERENCES ${id('cascade_users')}(${id('id')})
+    )`,
+    [],
+  );
+  yield* db.executeRaw(
+    `CREATE TABLE ${id('cascade_comments')} (
+      ${id('commentId')} ${mapColumnType('integer', {})} PRIMARY KEY,
+      ${id('userId')} ${mapColumnType('integer', {})} NOT NULL REFERENCES ${id('cascade_users')}(${id('id')}),
+      ${id('body')} ${mapColumnType('text', {})} NOT NULL
+    )`,
+    [],
+  );
+  yield* db.executeRaw(
+    `CREATE TABLE ${id('cascade_blocks')} (
+      ${id('id')} ${mapColumnType('integer', {})} PRIMARY KEY,
+      ${id('userId')} ${mapColumnType('integer', {})} NOT NULL REFERENCES ${id('cascade_users')}(${id('id')})
     )`,
     [],
   );
@@ -609,4 +679,321 @@ describe('makeRepository', () => {
       });
     },
   );
+});
+
+describe('makeRepository cascade delete', () => {
+  it.effect(
+    'cascades to every declared relation and keeps unrelated rows',
+    () => {
+      const program = Effect.gen(function* () {
+        yield* createCascadeSchema;
+        const db = yield* Driver;
+
+        yield* db.executeRaw(
+          "INSERT INTO cascade_users (id, name) VALUES (7, 'Anna'), (8, 'Boris'), (9, 'Viktor')",
+          [],
+        );
+        yield* db.executeRaw(
+          'INSERT INTO cascade_posts ("postId", "authorId") VALUES (11, 7), (12, 7), (13, 8)',
+          [],
+        );
+        yield* db.executeRaw(
+          'INSERT INTO cascade_comments ("commentId", "userId", body) VALUES (21, 7, \'one\'), (22, 8, \'two\')',
+          [],
+        );
+
+        const repo = makeRepository(cascadeUsers, { relations: userRelations });
+
+        expect(yield* repo.delete(7)).toBeUndefined();
+
+        expect(
+          (yield* db.executeRaw('SELECT * FROM cascade_users ORDER BY id', []))
+            .rows,
+        ).toEqual([
+          { id: 8, name: 'Boris' },
+          { id: 9, name: 'Viktor' },
+        ]);
+        expect(
+          (yield* db.executeRaw(
+            'SELECT * FROM cascade_posts ORDER BY "postId"',
+            [],
+          )).rows,
+        ).toEqual([{ postId: 13, authorId: 8 }]);
+        expect(
+          (yield* db.executeRaw(
+            'SELECT * FROM cascade_comments ORDER BY "commentId"',
+            [],
+          )).rows,
+        ).toEqual([{ commentId: 22, userId: 8, body: 'two' }]);
+      });
+
+      return Effect.gen(function* () {
+        yield* program.pipe(Effect.provide([sqliteFkLayer, UnitOfWorkLayer]));
+        yield* program.pipe(Effect.provide([pgLayer, UnitOfWorkLayer]));
+      });
+    },
+  );
+
+  it.effect('rolls back child deletions when the parent delete fails', () => {
+    const program = Effect.gen(function* () {
+      yield* createCascadeSchema;
+      const db = yield* Driver;
+
+      yield* db.executeRaw(
+        "INSERT INTO cascade_users (id, name) VALUES (7, 'Anna')",
+        [],
+      );
+      yield* db.executeRaw(
+        'INSERT INTO cascade_posts ("postId", "authorId") VALUES (11, 7)',
+        [],
+      );
+      yield* db.executeRaw(
+        'INSERT INTO cascade_comments ("commentId", "userId", body) VALUES (21, 7, \'one\')',
+        [],
+      );
+      yield* db.executeRaw(
+        'INSERT INTO cascade_blocks (id, "userId") VALUES (31, 7)',
+        [],
+      );
+
+      const repo = makeRepository(cascadeUsers, { relations: userRelations });
+
+      expect(yield* Effect.result(repo.delete(7))).toBeFailure(
+        ForeignKeyViolationError,
+      );
+
+      expect(
+        (yield* db.executeRaw('SELECT * FROM cascade_users', [])).rows,
+      ).toEqual([{ id: 7, name: 'Anna' }]);
+      expect(
+        (yield* db.executeRaw(
+          'SELECT * FROM cascade_posts ORDER BY "postId"',
+          [],
+        )).rows,
+      ).toEqual([{ postId: 11, authorId: 7 }]);
+      expect(
+        (yield* db.executeRaw(
+          'SELECT * FROM cascade_comments ORDER BY "commentId"',
+          [],
+        )).rows,
+      ).toEqual([{ commentId: 21, userId: 7, body: 'one' }]);
+      expect(
+        (yield* db.executeRaw('SELECT * FROM cascade_blocks', [])).rows,
+      ).toEqual([{ id: 31, userId: 7 }]);
+    });
+
+    return Effect.gen(function* () {
+      yield* program.pipe(Effect.provide([sqliteFkLayer, UnitOfWorkLayer]));
+      yield* program.pipe(Effect.provide([pgLayer, UnitOfWorkLayer]));
+    });
+  });
+
+  it.effect('cascades by a non-primary-key source column', () => {
+    const namedUsers = table('named_users', {
+      id: primaryKey(integer()),
+      name: text(),
+    });
+    const namedPosts = table('named_posts', {
+      postId: primaryKey(integer()),
+      authorName: text(),
+    });
+    const namedRelations = relations(namedUsers, ({ many }) => ({
+      posts: many(namedPosts, {
+        onDelete: 'cascade',
+        columns: { name: 'authorName' },
+      }),
+    }));
+
+    return Effect.gen(function* () {
+      const db = yield* Driver;
+
+      yield* db.executeRaw(
+        'CREATE TABLE named_users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)',
+        [],
+      );
+      yield* db.executeRaw(
+        'CREATE TABLE named_posts (postId INTEGER PRIMARY KEY, authorName TEXT NOT NULL)',
+        [],
+      );
+      yield* db.executeRaw(
+        "INSERT INTO named_users (id, name) VALUES (1, 'Anna'), (2, 'Boris')",
+        [],
+      );
+      yield* db.executeRaw(
+        "INSERT INTO named_posts (postId, authorName) VALUES (11, 'Anna'), (12, 'Anna'), (13, 'Boris')",
+        [],
+      );
+
+      const repo = makeRepository(namedUsers, { relations: namedRelations });
+
+      yield* repo.delete(1);
+
+      expect(
+        (yield* db.executeRaw('SELECT * FROM named_posts ORDER BY postId', []))
+          .rows,
+      ).toEqual([{ postId: 13, authorName: 'Boris' }]);
+      expect(
+        (yield* db.executeRaw('SELECT * FROM named_users', [])).rows,
+      ).toEqual([{ id: 2, name: 'Boris' }]);
+    }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer]));
+  });
+
+  it.effect('requires every mapped pair to match within one relation', () => {
+    const pairUsers = table('pair_users', {
+      id: primaryKey(integer()),
+      name: text(),
+    });
+    const pairPosts = table('pair_posts', {
+      postId: primaryKey(integer()),
+      authorId: integer(),
+      authorName: text(),
+    });
+    const pairRelations = relations(pairUsers, ({ many }) => ({
+      posts: many(pairPosts, {
+        onDelete: 'cascade',
+        columns: { id: 'authorId', name: 'authorName' },
+      }),
+    }));
+
+    return Effect.gen(function* () {
+      const db = yield* Driver;
+
+      yield* db.executeRaw(
+        'CREATE TABLE pair_users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)',
+        [],
+      );
+      yield* db.executeRaw(
+        'CREATE TABLE pair_posts (postId INTEGER PRIMARY KEY, authorId INTEGER NOT NULL, authorName TEXT NOT NULL)',
+        [],
+      );
+      yield* db.executeRaw(
+        "INSERT INTO pair_users (id, name) VALUES (7, 'Anna')",
+        [],
+      );
+      yield* db.executeRaw(
+        "INSERT INTO pair_posts (postId, authorId, authorName) VALUES (11, 7, 'Anna'), (12, 7, 'Boris'), (13, 8, 'Anna')",
+        [],
+      );
+
+      const repo = makeRepository(pairUsers, { relations: pairRelations });
+
+      yield* repo.delete(7);
+
+      expect(
+        (yield* db.executeRaw('SELECT * FROM pair_posts ORDER BY postId', []))
+          .rows,
+      ).toEqual([
+        { postId: 12, authorId: 7, authorName: 'Boris' },
+        { postId: 13, authorId: 8, authorName: 'Anna' },
+      ]);
+    }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer]));
+  });
+
+  it.effect('drops cached child rows after a cascade', () =>
+    Effect.gen(function* () {
+      yield* createCascadeSchema;
+      const db = yield* Driver;
+
+      yield* db.executeRaw(
+        "INSERT INTO cascade_users (id, name) VALUES (7, 'Anna')",
+        [],
+      );
+      yield* db.executeRaw(
+        'INSERT INTO cascade_posts ("postId", "authorId") VALUES (11, 7)',
+        [],
+      );
+      yield* db.executeRaw(
+        'INSERT INTO cascade_comments ("commentId", "userId", body) VALUES (21, 7, \'one\')',
+        [],
+      );
+
+      const postsRepo = makeRepository(cascadePosts);
+      const commentsRepo = makeRepository(cascadeComments);
+
+      expect(yield* postsRepo.findById(11)).toEqual({
+        postId: 11,
+        authorId: 7,
+      });
+      expect(yield* commentsRepo.findById(21)).toEqual({
+        commentId: 21,
+        userId: 7,
+        body: 'one',
+      });
+
+      const repo = makeRepository(cascadeUsers, { relations: userRelations });
+      yield* repo.delete(7);
+
+      expect(yield* postsRepo.findById(11)).toBeNull();
+      expect(yield* commentsRepo.findById(21)).toBeNull();
+    }).pipe(Effect.provide([sqliteFkLayer, UnitOfWorkLayer])),
+  );
+
+  it.effect('deletes the parent when the relations map is empty', () =>
+    Effect.gen(function* () {
+      yield* createCascadeSchema;
+      const db = yield* Driver;
+
+      yield* db.executeRaw(
+        "INSERT INTO cascade_users (id, name) VALUES (7, 'Anna')",
+        [],
+      );
+
+      const repo = makeRepository(cascadeUsers, {
+        relations: relations(cascadeUsers, () => ({})),
+      });
+
+      yield* repo.delete(7);
+
+      expect(
+        (yield* db.executeRaw('SELECT * FROM cascade_users', [])).rows,
+      ).toEqual([]);
+    }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
+  );
+
+  it.effect('leaves the database untouched for a missing parent', () =>
+    Effect.gen(function* () {
+      yield* createCascadeSchema;
+      const db = yield* Driver;
+
+      yield* db.executeRaw(
+        "INSERT INTO cascade_users (id, name) VALUES (7, 'Anna')",
+        [],
+      );
+      yield* db.executeRaw(
+        'INSERT INTO cascade_posts ("postId", "authorId") VALUES (11, 7)',
+        [],
+      );
+
+      const repo = makeRepository(cascadeUsers, { relations: userRelations });
+
+      expect(yield* repo.delete(999)).toBeUndefined();
+
+      expect(
+        (yield* db.executeRaw('SELECT * FROM cascade_users', [])).rows,
+      ).toEqual([{ id: 7, name: 'Anna' }]);
+      expect(
+        (yield* db.executeRaw(
+          'SELECT * FROM cascade_posts ORDER BY "postId"',
+          [],
+        )).rows,
+      ).toEqual([{ postId: 11, authorId: 7 }]);
+    }).pipe(Effect.provide([sqliteFkLayer, UnitOfWorkLayer])),
+  );
+
+  it('rejects relations declared for a different source table', () => {
+    const repo = makeRepository(cascadeUsers, { relations: userRelations });
+    const emptyRepo = makeRepository(cascadeUsers, {
+      relations: relations(cascadeUsers, () => ({})),
+    });
+    const deleteEffect = repo.delete(7);
+    const emptyDeleteEffect = emptyRepo.delete(7);
+
+    expectTypeOf<Effect.Success<typeof deleteEffect>>().toEqualTypeOf<void>();
+    expectTypeOf<
+      Effect.Success<typeof emptyDeleteEffect>
+    >().toEqualTypeOf<void>();
+
+    // @ts-expect-error relations belong to cascadeUsers, not cascadePosts
+    makeRepository(cascadePosts, { relations: userRelations });
+  });
 });
