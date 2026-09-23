@@ -1,18 +1,14 @@
+import type { PrimaryKeyName } from '#schema/columns.js';
 import type { AnyTableDef } from '#schema/table.js';
 
 interface RelationsColumns<
   Source extends AnyTableDef,
   Target extends AnyTableDef,
 > {
-  readonly columns: {
-    [K in keyof Source['_columns'] & string]: Partial<
-      Record<
-        keyof Source['_columns'] & string,
-        keyof Target['_columns'] & string
-      >
-    > &
-      Record<K, keyof Target['_columns'] & string>;
-  }[keyof Source['_columns'] & string];
+  readonly columns: Record<
+    PrimaryKeyName<Source>,
+    keyof Target['_columns'] & string
+  >;
   readonly onDelete: 'cascade';
 }
 

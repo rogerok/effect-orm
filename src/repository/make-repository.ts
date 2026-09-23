@@ -112,8 +112,12 @@ export const makeRepository = <
         .where((b) => b.eq(b.col(t._name, pk), b.lit(id)))
         .execute();
 
-      yield* withTransaction(
+      const deletedRelations = yield* withTransaction(
         Effect.gen(function* () {
+          let deletedRows: ReadonlyArray<{
+            readonly keys: ReadonlyArray<IdentityBaseKey>;
+            readonly table: AnyTableDef;
+          }> = [];
           if (options?.relations) {
             const { relations } = options.relations;
 
@@ -124,69 +128,59 @@ export const makeRepository = <
 
             if (Option.isSome(row)) {
               const effects = Object.values(relations).map((relation) =>
+                // Каскад физически удаляет дочерние строки, даже если у дочерней таблицы
+                // задан `deletedAtColumn`. После этого `findIncludingDeleted` не найдёт их.
+                // Нужно определить политику для такого сочетания или явно запретить его.
+
                 deleteFrom(relation.table)
-                  .where((b) => {
-                    const preds: Pred[] = [];
-
-                    for (const [sourceKey, targetKey] of Object.entries(
-                      relation.columns,
-                    )) {
-                      preds.push(
-                        b.eq(
-                          b.col(relation.table._name, targetKey),
-                          b.lit(row.value[sourceKey]),
-                        ),
-                      );
-                    }
-
-                    return b.and(...preds);
-                  })
+                  .where((b) =>
+                    b.eq(
+                      b.col(relation.table._name, relation.columns[pk]),
+                      b.lit(row.value[pk]),
+                    ),
+                  )
                   .returning(findPrimaryKey(relation.table))
                   .execute()
                   .pipe(
                     Effect.map((result) => ({
-                      row: result,
+                      keys: result
+                        .map((r) => r[findPrimaryKey(relation.table)])
+                        .filter(
+                          (key) =>
+                            typeof key === 'string' || typeof key === 'number',
+                        ),
                       table: relation.table,
                     })),
                   ),
               );
 
-              const deletedRows = yield* Effect.all(effects, {
+              deletedRows = yield* Effect.all(effects, {
                 concurrency: 1,
               });
-
-              yield* Effect.forEach(
-                deletedRows,
-                ({ table, row: children }) =>
-                  Effect.forEach(
-                    children,
-                    (r) =>
-                      Effect.gen(function* () {
-                        const key = r[findPrimaryKey(table)];
-                        if (
-                          typeof key === 'string' ||
-                          typeof key === 'number'
-                        ) {
-                          yield* map.invalidate(table._name, key);
-                        }
-                      }),
-                    {
-                      discard: true,
-                    },
-                  ),
-                {
-                  discard: true,
-                },
-              );
             }
-
-            yield* deleteEff;
-            yield* map.invalidate(t._name, id);
-          } else {
-            yield* deleteEff;
-            yield* map.invalidate(t._name, id);
           }
+          yield* deleteEff;
+          return deletedRows;
         }),
+      );
+
+      yield* map.invalidate(t._name, id);
+      yield* Effect.forEach(
+        deletedRelations,
+        ({ keys, table }) =>
+          Effect.forEach(
+            keys,
+            (key) =>
+              Effect.gen(function* () {
+                yield* map.invalidate(table._name, key);
+                yield* uow.untrack(table, key);
+              }),
+            { discard: true, concurrency: 1 },
+          ),
+        {
+          discard: true,
+          concurrency: 1,
+        },
       );
     });
 
