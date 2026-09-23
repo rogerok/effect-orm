@@ -46,6 +46,10 @@ interface UnitOfWorkApi {
     table: T,
     entity: E,
   ) => Effect.Effect<void>;
+  readonly untrack: <T extends AnyTableDef>(
+    table: T,
+    pk: IdentityBaseKey,
+  ) => Effect.Effect<void>;
 }
 
 export class UnitOfWork extends Context.Service<UnitOfWork, UnitOfWorkApi>()(
@@ -206,6 +210,22 @@ const makeUnitOfWork = Effect.gen(function* () {
           table,
           snapshot: structuredClone(entity),
         });
+      }),
+    untrack: (table, pk) =>
+      Ref.update(trackedRef, (tracked) => {
+        let next: Map<TrackedEntity, TrackedEntry> | undefined;
+
+        for (const [key, entry] of tracked) {
+          if (
+            entry.table._name === table._name &&
+            entry.snapshot[findPrimaryKey(entry.table)] === pk
+          ) {
+            next ??= new Map(tracked);
+            next.delete(key);
+          }
+        }
+
+        return next ?? tracked;
       }),
   });
 });

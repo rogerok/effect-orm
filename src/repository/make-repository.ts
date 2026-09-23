@@ -10,6 +10,7 @@ import type { ExpressionBuilder, Source } from '#query/expression-builder.js';
 import type { Pred } from '#query/typed-ast.js';
 import type { PrimaryKeyName } from '#schema/columns.js';
 import type { InferInsert, InferRow, InferUpdate } from '#schema/infer.js';
+import type { Relations, TableRelations } from '#schema/relations.js';
 import type { IdentityBaseKey } from '#uow/identity-map.js';
 
 import {
@@ -23,11 +24,19 @@ import { now } from '#query/expressions.js';
 import { deleteFrom, insertInto } from '#query/write-builders.js';
 import { updateRow } from '#repository/update.js';
 import { type AnyTableDef } from '#schema/table.js';
+import { withTransaction } from '#uow/transaction.js';
 import { UnitOfWork } from '#uow/unit-of-work.js';
 import { findPrimaryKey } from '#utils/find-primary-key.js';
 
-interface MakeRepositoryOptions {
+interface MakeRepositoryOptions<
+  T extends AnyTableDef,
+  R extends Record<string, Relations<T, AnyTableDef>> = Record<
+    string,
+    Relations<T, AnyTableDef>
+  >,
+> {
   readonly alias?: string;
+  readonly relations?: TableRelations<T, R>;
 }
 
 interface RepoUpdateOptions {
@@ -55,9 +64,15 @@ const criteriaToPred = <T extends AnyTableDef>(
     }, []),
   );
 
-export const makeRepository = <T extends AnyTableDef>(
+export const makeRepository = <
+  T extends AnyTableDef,
+  R extends Record<string, Relations<T, AnyTableDef>> = Record<
+    string,
+    Relations<T, AnyTableDef>
+  >,
+>(
   t: T,
-  options?: MakeRepositoryOptions,
+  options?: MakeRepositoryOptions<T, R>,
 ) => {
   const alias = options?.alias ?? t._name;
   const pk = findPrimaryKey(t);
@@ -83,6 +98,16 @@ export const makeRepository = <T extends AnyTableDef>(
     }
   }
 
+  if (softDeleteCol === undefined && options?.relations) {
+    for (const relation of Object.values(options.relations.relations)) {
+      if (relation.table._options?.deletedAtColumn !== undefined) {
+        throw new QueryInvariantError({
+          cause: `Cannot hard-delete ${t._name}: related table ${relation.table._name} uses soft delete`,
+        });
+      }
+    }
+  }
+
   const selectQb = selectFrom(t, alias);
   const insertQb = insertInto(t);
   const deleteQb = deleteFrom(t);
@@ -93,12 +118,76 @@ export const makeRepository = <T extends AnyTableDef>(
     Effect.gen(function* () {
       const uow = yield* UnitOfWork;
       const map = uow.identity;
-
-      yield* deleteQb
+      const deleteEff = deleteQb
         .where((b) => b.eq(b.col(t._name, pk), b.lit(id)))
         .execute();
 
+      const deletedRelations = yield* withTransaction(
+        Effect.gen(function* () {
+          let deletedRows: ReadonlyArray<{
+            readonly keys: ReadonlyArray<IdentityBaseKey>;
+            readonly table: AnyTableDef;
+          }> = [];
+          if (options?.relations) {
+            const { relations } = options.relations;
+
+            const row = yield* selectQb
+              .where((b) => b.eq(b.col(alias, pk), b.lit(id)))
+              .selectAll()
+              .executeOne();
+
+            if (Option.isSome(row)) {
+              const effects = Object.values(relations).map((relation) =>
+                deleteFrom(relation.table)
+                  .where((b) =>
+                    b.eq(
+                      b.col(relation.table._name, relation.columns[pk]),
+                      b.lit(row.value[pk]),
+                    ),
+                  )
+                  .returning(findPrimaryKey(relation.table))
+                  .execute()
+                  .pipe(
+                    Effect.map((result) => ({
+                      keys: result
+                        .map((r) => r[findPrimaryKey(relation.table)])
+                        .filter(
+                          (key) =>
+                            typeof key === 'string' || typeof key === 'number',
+                        ),
+                      table: relation.table,
+                    })),
+                  ),
+              );
+
+              deletedRows = yield* Effect.all(effects, {
+                concurrency: 1,
+              });
+            }
+          }
+          yield* deleteEff;
+          return deletedRows;
+        }),
+      );
+
       yield* map.invalidate(t._name, id);
+      yield* Effect.forEach(
+        deletedRelations,
+        ({ keys, table }) =>
+          Effect.forEach(
+            keys,
+            (key) =>
+              Effect.gen(function* () {
+                yield* map.invalidate(table._name, key);
+                yield* uow.untrack(table, key);
+              }),
+            { discard: true, concurrency: 1 },
+          ),
+        {
+          discard: true,
+          concurrency: 1,
+        },
+      );
     });
 
   /**
