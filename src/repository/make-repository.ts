@@ -137,28 +137,31 @@ export const makeRepository = <
               .executeOne();
 
             if (Option.isSome(row)) {
-              const effects = Object.values(relations).map((relation) =>
-                deleteFrom(relation.table)
-                  .where((b) =>
-                    b.eq(
-                      b.col(relation.table._name, relation.columns[pk]),
-                      b.lit(row.value[pk]),
+              const effects = Object.values(relations)
+                .filter((rel) => rel.onDelete === 'cascade')
+                .map((relation) =>
+                  deleteFrom(relation.table)
+                    .where((b) =>
+                      b.eq(
+                        b.col(relation.table._name, relation.columns[pk]),
+                        b.lit(row.value[pk]),
+                      ),
+                    )
+                    .returning(findPrimaryKey(relation.table))
+                    .execute()
+                    .pipe(
+                      Effect.map((result) => ({
+                        keys: result
+                          .map((r) => r[findPrimaryKey(relation.table)])
+                          .filter(
+                            (key) =>
+                              typeof key === 'string' ||
+                              typeof key === 'number',
+                          ),
+                        table: relation.table,
+                      })),
                     ),
-                  )
-                  .returning(findPrimaryKey(relation.table))
-                  .execute()
-                  .pipe(
-                    Effect.map((result) => ({
-                      keys: result
-                        .map((r) => r[findPrimaryKey(relation.table)])
-                        .filter(
-                          (key) =>
-                            typeof key === 'string' || typeof key === 'number',
-                        ),
-                      table: relation.table,
-                    })),
-                  ),
-              );
+                );
 
               deletedRows = yield* Effect.all(effects, {
                 concurrency: 1,

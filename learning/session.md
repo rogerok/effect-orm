@@ -15,6 +15,102 @@ Read-builder урока 3 собран целиком: FSM из двух кла�
 
 ## Current task
 
+**E4.3 закрыт (запись 0047). Следующая задача курса не выбрана: кандидаты E4.6, E4.8 или порядок DELETE в очереди.**
+
+- 2026-09-24: названия тестов `topological-sort.test.ts` переведены на английский агентом (наставник был отключён).
+  Пользователь исправил `managerId` → integer, ключ `reports`, `onDelete: 'no action'`. Остались по желанию:
+  комментарий над `insertOrderEdges`, `expectSuccess` до выборок, lint (неиспользуемый `Layer`, shadowing
+  `userRelations`), перенос UoW-тестов в `unit-of-work.test.ts`.
+- Наставник отключён; агент сделал: (1) `statement-timeout` — PGlite блокирует event loop на `pg_sleep`
+  и игнорирует `statement_timeout` (проверено экспериментом), тест переписан на драйвер с прерываемой записью
+  - мутация `Effect.uninterruptible` ловится; (2) `vitest.config.ts` testTimeout/hookTimeout 15 с (PGlite
+    create ≈1,6 с solo; при двойной нагрузке старый конфиг — 4 timeout, новый — 143/143); (3) UoW-тесты перенесены
+    в `unit-of-work.test.ts` (таблицы authors/posts), `expectSuccess` первым, комментарий над `insertOrderEdges`,
+    lint чист кроме `no-array-sort` (lib ES2022). Полный прогон 143/143.
+- (Было) Полный `pnpm vitest run`: 138/143. `statement-timeout` падает и на чистом HEAD 24b148b (не связано с E4.3);
+  4 PGlite-теста — тайм-аут ~5 с только при параллельном прогоне, по отдельности проходят. Вынесено в отдельную задачу.
+
+### Продолжить отсюда (E4.3)
+
+- 2026-09-24: пользователь выбрал E4.3 из HTML курса. Понятия graph, DAG, topological sort, in-degree,
+  алгоритм Кана до этого были незнакомы; объяснены с нуля.
+- Расхождение с кодом: `register` в `src/uow/unit-of-work.ts` принимает непрозрачный `Effect`, у pending-операции
+  нет таблицы — сортировать в `commit` нечего. `relations`/`many` из E4.2 уже задаёт ребро parent → child.
+  `save` репозитория выполняет INSERT сразу, минуя очередь.
+- Согласованный порядок: (1) чистая функция topoSort + тесты; (2) рёбра из `relations`; (3) метаданные
+  таблицы в очереди UoW и сортировка в `commit`; позже self-reference и порядок DELETE.
+- Пользователь уточнил, что входящее ребро указывает в вершину. Затем проследил Кана на графе
+  users→posts, posts→comments, users→comments, tags без рёбер: in-degree и порядок users→posts→comments
+  верны, но пропустил `tags` (in-degree 0). Объяснено: in-degree нужен для каждой таблицы, иначе ложный цикл.
+- На вопрос о позициях `tags` ответил «до или после users» (рассуждение от очереди). Объяснено: допустима любая
+  позиция; тест должен проверять индекс `from` < индекс `to` для каждого ребра, а не один точный список.
+- Цикл users ↔ teams: пользователь сам понял «граф не ациклический», механизм обнаружения объяснён наставником
+  (очередь пуста, длина результата меньше числа таблиц). На графе с циклом + users→posts + tags сам вывел
+  результат `[tags]` и что `posts` не попадёт, т.к. `users` не выводится; ошибся в in-degree `users` (назвал 2,
+  посчитав исходящее ребро) — исправлено. Вывод: остаток = неупорядоченные таблицы, не только участники цикла.
+- Текущая задача пользователя: написать `src/uow/topological-sort.test.ts` (test-first) с двумя тестами —
+  DAG (проверка индексов по рёбрам) и цикл (`Failure` с `CyclicDependencyError`, `tables` = users, teams, posts).
+  Контракт: `topologicalSort(tables, edges: [from, to][]) => Result<ReadonlyArray<string>, CyclicDependencyError>`;
+  в реализации пока `throw new Error('not implemented')`. Использовать matchers из `src/config/result-matchers.ts`.
+- Представления графа (edge list / adjacency list / in-degree Map) объяснены с нуля; пользователь сначала записал
+  вершину без рёбер как `[tags]` в edges — исправлено (вершина живёт в `tables`, `Edge` — ровно два элемента).
+- Первый тест (DAG) написан пользователем и проверен: полнота через отсортированные копии + цикл по `edges`
+  с `indexOf`. Пришлось дважды указать на `toEqual` с точным порядком — удалён только после явного показа строк;
+  понимание «допустимых порядков несколько» в тесте пока не самостоятельное. Тест падает на `not implemented`,
+  `pnpm check-types` — 0.
+- Следующее: второй тест — цикл users↔teams + users→posts + tags, `expectFailure`,
+  `toBeInstanceOf(CyclicDependencyError)`, отсортированные `error.tables` = posts, teams, users.
+  Долг: `CyclicDependencyError.tables` объявлен как `string[]`, предложено `ReadonlyArray<string>`.
+- Второй тест (цикл) написан, `tables` → `ReadonlyArray<string>` исправлено. На вопрос «почему posts в остатке»
+  ответил только начальным in-degree; объяснено: in-degree posts уменьшает лишь users, которая не выводится.
+- Подготовка данных в `src/uow/topological-sort.ts` (inDegree, adjacency, queue) написана пользователем.
+  Ошибки по ходу: сначала in-degree увеличивался у `from`; после ответа наставника — читался счётчик `from`,
+  писался в `to` (случайно верно на графах тестов; показан контрпример a→c, b→c). Исправлено.
+  Направление in-degree (по `to`) пользователь пока не выводит сам — перепроверить позже.
+- Главный цикл написан пользователем. Первая версия зависала: обход `adjacency.values()` всех таблиц вместо
+  `adjacency.get(q)` и запись старого `degree` вместо `next`. После разбора исправлено; оба теста проходят,
+  `pnpm check-types` — 0. Lint `no-array-sort` в тесте оставлен: `lib: ES2022`, `toSorted` недоступен.
+- Пользователь снял режим наставника на эту сессию; третий тест написал агент. Граф a→c, b→c мутацию НЕ ловит
+  (оба родителя уже в FIFO-очереди); взят граф sections→categories→posts + users→posts. Мутант
+  `get(from)` падает только на нём («expected 3 to be less than 2»); после восстановления 3/3, check-types — 0.
+- Режим наставника снова включён. `relationEdges(ReadonlyArray<TableRelations<AnyTableDef>>)` написан
+  пользователем в `src/uow/topological-sort.ts` + тест; 4/4, check-types — 0. До кода пользователь назвал `to`
+  ключами объекта relations — исправлено на `relation.table._name` (контрпример `authoredPosts`).
+- Проектирование: как pending-операция сообщает свою таблицу. Пользователь предложил `register(effect, relations)`;
+  после контрпримера (у `posts` нет своего relations) и двух подсказок не смог разделить «операция / схема»,
+  ответил наоборот. Наставник дал ответ: операция → таблица, схема → все relations (один раз).
+  Пользователь попросил визуальный материал: создан урок `lessons/0015-schema-versus-operation.html`
+  (модель `assets/insert-order-lab.js` + 3 learning-check) и памятка `references/insert-ordering.html`;
+  `index.html` указывает на 0015. Понимание разделения НЕ подтверждено — сначала спросить результат урока,
+  затем вопрос: что передаётся в register для поста 11 и меняются ли рёбра.
+- Пользователь сам сформулировал: register получает таблицу операции и эффект. Выбрал Layer вместо commit
+  (обоснование «нельзя создать слой без relations» уточнено: одно место вместо 19). На вопрос про `tables`
+  (indexOf → -1 для таблицы без связей) ответить не смог — объяснено: tables = таблицы relations ∪ таблицы очереди.
+- API-шаг сделан пользователем: `PendingOperation`, `register(table, effect)`, `makeUnitOfWorkLayer({ relations })`,
+  `UnitOfWorkLayer = makeUnitOfWorkLayer({ relations: [] })`, вызовы в тестах обновлены. check-types — 0,
+  `src/uow` + `src/repository` 43/43. Долг: переименовать `pendingEffectsRef` → `pendingOperationsRef`.
+  Ограничение: очередь содержит и UPDATE/DELETE; для DELETE нужен обратный порядок — вне E4.3, зафиксировать.
+- Следующее: тест-first в unit-of-work.test.ts на SQLite с `enableForeignKeys: true` (пост зарегистрирован
+  раньше пользователя; с relations commit проходит, с `UnitOfWorkLayer` — ForeignKeyViolationError), затем
+  сортировка в commit.
+- Пользователь предложил и сделал `onDelete?: 'cascade' | 'no action'` (имена из SQL). Сортировка в commit
+  реализована пользователем (Set имён из рёбер + очереди, `Effect.fromResult(topologicalSort)`, стабильный sort).
+  Сначала инвертировал проверку второго теста в `expectFailure` — объяснено, что тест описывает желаемое поведение.
+  Итог: 45/45, check-types — 0, мутация `sortedOperations` → `pendingOperations` ловится. Запись 0047.
+- Петля таблицы на себя: пользователь сам предсказал ложный цикл и выбрал `relationEdges` (обоснование:
+  topologicalSort не должен нести доменную ответственность). Переименовано в `insertOrderEdges`, тест добавлен,
+  46/46. Замечания к тесту: имя «циклические связи игнорируются» неточно, `managerId` text вместо integer,
+  ключ `relations`, cascade у руководителя, старое имя теста `'relationEdges'`, комментарий о порядке внутри таблицы.
+- Остаток E4.3 (косметика, по желанию): `expectSuccess` поставить до выборок строк; перенести UoW-тесты в
+  `unit-of-work.test.ts`; убрать `»` в имени теста и лишний `Result.isFailure`. Ограничения — в 0047.
+- (Закрыто) где хранить relations (параметр Layer UoW или commit) → `register(table, effect)` + `PendingOperation`
+  → сортировка очереди в commit (стабильный sort по indexOf) → переписать вызовы register в тестах.
+- (Закрыто) третий тест a→c, b→c + мутационная проверка (временно вернуть `inDegree.get(from)` — тест должен
+  упасть). Вопрос без ответа: почему фильтр `tables` по `result` и `inDegree > 0` дают один набор.
+  Открытый вопрос на потом: ребро с таблицей вне `tables` сейчас молча пропускается.
+
+## Предыдущая задача
+
 **E4.2 / каскадное удаление через метаданные связей. SQL-каскад, транзакция, точечная инвалидация кэша реализованы и проверены. Пользователь отключил наставника; агент покрыл фичу тестами в make-repository.test.ts: 8 новых тестов (каскад по всем связям, откат при FK-ошибке, не-PK исходная колонка, несколько пар в одной связи, сброс кэша дочерних строк, пустой словарь, отсутствующий родитель, типовой запрет чужих связей).**
 
 ### Продолжить отсюда

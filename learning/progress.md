@@ -447,6 +447,7 @@ CRUD, точные строки и отсутствие совпадений, п
 | L3.24 (E3.3)        | INSERT FSM без `returning`, тип и значение результата, мутационная проверка        | [0042](records/0042-l3-24-insert-fsm.md)                                                                                                                             |
 | L3.25 (E3.3)        | Практика multi-row INSERT подтверждена; самостоятельное объяснение остаётся долгом | [0043](records/0043-l3-25-multirow-insert.md)                                                                                                                        |
 | E3.4                | Repository проверен через публичный интерфейс и типовые запреты                    | [0044](records/0044-e3-4-repository-contract.md)                                                                                                                     |
+| E4.3                | порядок вставки по FK: Кан, рёбра из relations, сортировка очереди в commit        | [0047](records/0047-e4-3-insert-ordering.md)                                                                                                                         |
 
 Самостоятельные шаги L3.18 (две колонки `id` под разными ключами) и L3.19 (второй JOIN)
 остаются долгом. Тест E3.5 проверяет первый случай через INNER/LEFT self JOIN, но написан агентом.
@@ -520,6 +521,7 @@ L3.24 закрыт: пользователь реализовал `insertInto`, 
 | Repository / Data Mapper boundary              |       1 | Термины присутствуют только в курсе; проект ещё не создаёт domain entities.                                                                                                 |
 | Transactions/savepoints                        | unknown | Реализации и подтверждённой практики нет.                                                                                                                                   |
 | Identity Map / Unit of Work                    |       0 | В текущем коде отсутствуют.                                                                                                                                                 |
+| Граф зависимостей, topological sort (Кан)      |       3 | E4.3: трассировка и реализация с помощью; направление in-degree перепутано дважды ([0047](records/0047-e4-3-insert-ordering.md)).                                           |
 | Migrations                                     |       0 | В текущем коде отсутствуют.                                                                                                                                                 |
 | Public package design/build consumption        |       1 | package metadata есть, но `src/index.ts` отсутствует при export на `dist/index.*`.                                                                                          |
 

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Памятка · порядок вставки по FK (E4.3)</title>
+    <link rel="stylesheet" href="../assets/lesson-theme.css" />
+  </head>
+  <body>
+    <main>
+      <article>
+        <header>
+          <p class="eyebrow">Effect ORM · памятка · E4.3</p>
+          <h1>Порядок вставки по FK</h1>
+          <p class="meta">
+            Уроки: <a href="../lessons/0015-schema-versus-operation.html">0015</a>
+            · код: <code>src/uow/topological-sort.ts</code>
+          </p>
+        </header>
+
+        <section id="glossary">
+          <h2>Словарь</h2>
+          <dl class="assignment-map">
+            <dt>Ориентированный граф (directed graph)</dt>
+            <dd>Вершины и рёбра с направлением. У нас вершина — таблица.</dd>
+            <dt>Ребро <code>from → to</code></dt>
+            <dd><code>from</code> вставляется раньше <code>to</code>. Родитель → потомок.</dd>
+            <dt>DAG (directed acyclic graph)</dt>
+            <dd>Ориентированный граф без циклов. Только для него существует порядок.</dd>
+            <dt>Топологическая сортировка (topological sort)</dt>
+            <dd>Список вершин, где каждое ребро идёт слева направо. Правильных списков может быть несколько.</dd>
+            <dt>Входящая степень (in-degree)</dt>
+            <dd>Число рёбер, которые указывают <em>в</em> вершину.</dd>
+          </dl>
+        </section>
+
+        <section id="representation">
+          <h2>Три представления графа</h2>
+          <table>
+            <thead>
+              <tr><th>Форма</th><th>Пример для <code>users → posts</code></th><th>Заполняется по</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>edge list (вход функции)</td><td><code>[['users', 'posts']]</code></td><td>—</td></tr>
+              <tr><td>adjacency list</td><td><code>users → ['posts']</code></td><td><code>from</code></td></tr>
+              <tr><td>in-degree</td><td><code>posts → 1</code></td><td><code>to</code></td></tr>
+            </tbody>
+          </table>
+          <p>Каждую таблицу из <code>tables</code> заранее кладём в обе <code>Map</code> — иначе таблица без рёбер потеряется.</p>
+        </section>
+
+        <section id="kahn">
+          <h2>Алгоритм Кана</h2>
+          <ol>
+            <li>Посчитать in-degree каждой таблицы.</li>
+            <li>Очередь ← все таблицы с in-degree <code>0</code>.</li>
+            <li>Взять таблицу из начала очереди, добавить в результат.</li>
+            <li>Для каждой таблицы из её adjacency: in-degree − 1; стало <code>0</code> → в конец очереди.</li>
+            <li>Повторять 3–4, пока очередь не пуста.</li>
+            <li>Результат короче <code>tables</code> → цикл. Остаток = таблицы цикла <em>и</em> все, кто от них зависит.</li>
+          </ol>
+        </section>
+
+        <section id="tests">
+          <h2>Как тестировать</h2>
+          <ul>
+            <li>Не сравнивать с одним точным списком. Проверять: все таблицы на месте + <code>indexOf(from) &lt; indexOf(to)</code> для каждого ребра.</li>
+            <li>Ошибку подсчёта in-degree ловит граф, где у таблицы два родителя, и один освобождается позже другого (<code>sections → categories → posts</code>, <code>users → posts</code>).</li>
+          </ul>
+        </section>
+
+        <section id="uow">
+          <h2>Схема и операция</h2>
+          <dl class="assignment-map">
+            <dt>Схема (один раз)</dt>
+            <dd>Все <code>relations</code> → <code>insertOrderEdges</code> → <code>topologicalSort</code> → порядок таблиц.</dd>
+            <dt>Операция (каждый <code>register</code>)</dt>
+            <dd>Таблица + эффект. Позиция = <code>порядок.indexOf(op.table)</code>.</dd>
+            <dt><code>to</code> в <code>insertOrderEdges</code></dt>
+            <dd><code>relation.table._name</code>, а не ключ объекта связей: ключ — имя связи.</dd>
+          </dl>
+        </section>
+      </article>
+    </main>
+  </body>
+</html>

@@ -301,6 +301,7 @@ describe('dirty tracking', () => {
         anna.age = 22;
         boris.age = 31;
         yield* uow.register(
+          versionedUsers,
           insertInto(versionedUsers)
             .values([
               {
@@ -550,6 +551,7 @@ describe('dirty tracking', () => {
       const repo = makeRepository(versionedUsers);
       const uow = yield* UnitOfWork;
       yield* uow.register(
+        versionedUsers,
         repo
           .update(1, { name: 'Maria' }, { expectedVersion: 3 })
           .pipe(Effect.provideService(UnitOfWork, uow)),
