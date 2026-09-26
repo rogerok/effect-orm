@@ -9,7 +9,7 @@ interface RelationsColumns<
     PrimaryKeyName<Source>,
     keyof Target['_columns'] & string
   >;
-  readonly onDelete: 'cascade';
+  readonly onDelete?: 'cascade' | 'no action';
 }
 
 export interface Relations<

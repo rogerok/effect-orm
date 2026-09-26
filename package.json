@@ -7,6 +7,50 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./repository": {
+      "types": "./dist/repository/make-repository.d.ts",
+      "default": "./dist/repository/make-repository.js"
+    },
+    "./uow": {
+      "types": "./dist/uow/unit-of-work.d.ts",
+      "default": "./dist/uow/unit-of-work.js"
+    },
+    "./drivers/pglite": {
+      "types": "./dist/drivers/pglite.d.ts",
+      "default": "./dist/drivers/pglite.js"
+    },
+    "./drivers/sqlite": {
+      "types": "./dist/drivers/sqlite.d.ts",
+      "default": "./dist/drivers/sqlite.js"
+    },
+    "./drivers/libsql": {
+      "types": "./dist/drivers/libsql.d.ts",
+      "default": "./dist/drivers/libsql.js"
+    },
+    "./migrations": {
+      "types": "./dist/migrations/runner.d.ts",
+      "default": "./dist/migrations/runner.js"
+    },
+    "./layers/metric": {
+      "types": "./dist/layers/metric.d.ts",
+      "default": "./dist/layers/metric.js"
+    },
+    "./layers/retry": {
+      "types": "./dist/layers/retry.d.ts",
+      "default": "./dist/layers/retry.js"
+    },
+    "./layers/slow-query-log": {
+      "types": "./dist/layers/slow-query-log.d.ts",
+      "default": "./dist/layers/slow-query-log.js"
+    },
+    "./layers/statement-timeout": {
+      "types": "./dist/layers/statement-timeout.d.ts",
+      "default": "./dist/layers/statement-timeout.js"
+    },
+    "./layers/tracing": {
+      "types": "./dist/layers/tracing.d.ts",
+      "default": "./dist/layers/tracing.js"
     }
   },
   "files": [

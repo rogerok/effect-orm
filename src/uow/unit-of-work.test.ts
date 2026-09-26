@@ -2,10 +2,13 @@ import { describe, it } from '@effect/vitest';
 import { Effect } from 'effect';
 import { expect } from 'vitest';
 
-import { expectFailure } from '#config/result-matchers.js';
+import { expectFailure, expectSuccess } from '#config/result-matchers.js';
 import { Driver } from '#drivers/driver.js';
 import * as SqliteDriver from '#drivers/sqlite.js';
-import { UniqueViolationError } from '#errors/errors.js';
+import {
+  ForeignKeyViolationError,
+  UniqueViolationError,
+} from '#errors/errors.js';
 import { selectFrom } from '#query/builder.js';
 import { insertInto } from '#query/write-builders.js';
 import { makeRepository } from '#repository/make-repository.js';
@@ -17,8 +20,13 @@ import {
   text,
   withDefault,
 } from '#schema/columns.js';
+import { relations } from '#schema/relations.js';
 import { table } from '#schema/table.js';
-import { UnitOfWork, UnitOfWorkLayer } from '#uow/unit-of-work.js';
+import {
+  makeUnitOfWorkLayer,
+  UnitOfWork,
+  UnitOfWorkLayer,
+} from '#uow/unit-of-work.js';
 
 const users = table('users', {
   id: primaryKey(integer()),
@@ -29,6 +37,7 @@ const users = table('users', {
 });
 
 const sqliteLayer = SqliteDriver.layer({ path: ':memory:' });
+
 const createUsers = Effect.gen(function* () {
   const db = yield* Driver;
   const id = db.dialect.quoteIdentifier;
@@ -59,7 +68,7 @@ describe('unit of of work', () => {
 
       const uow = yield* UnitOfWork;
       const save = insertInto(users).values([user]).execute();
-      yield* uow.register(save);
+      yield* uow.register(users, save);
 
       const beforeCommit = yield* selectFrom(users, 'u').selectAll().execute();
       expect(beforeCommit).toEqual([]);
@@ -86,8 +95,8 @@ describe('unit of of work', () => {
       const uow = yield* UnitOfWork;
       const save1 = insertInto(users).values([user]).execute();
       const save2 = insertInto(users).values([user]).execute();
-      yield* uow.register(save1);
-      yield* uow.register(save2);
+      yield* uow.register(users, save1);
+      yield* uow.register(users, save2);
 
       const result = yield* Effect.result(uow.commit);
 
@@ -116,7 +125,7 @@ describe('unit of of work', () => {
       const saveEff = repo
         .save(user)
         .pipe(Effect.provideService(UnitOfWork, uow));
-      yield* uow.register(saveEff);
+      yield* uow.register(users, saveEff);
 
       const identityBeforeCommit = yield* uow.identity.get<typeof user>(
         'users',
@@ -162,8 +171,8 @@ describe('unit of of work', () => {
         const save2 = repo
           .save(user)
           .pipe(Effect.provideService(UnitOfWork, uow));
-        yield* uow.register(save1);
-        yield* uow.register(save2);
+        yield* uow.register(users, save1);
+        yield* uow.register(users, save2);
 
         const result = yield* Effect.result(uow.commit);
         const afterCommit = yield* selectFrom(users, 'u').selectAll().execute();
@@ -188,5 +197,93 @@ describe('unit of of work', () => {
         expect(identityAfterRollback).toBeNull();
         expect(yield* uow.pendingCount).toBe(0);
       }).pipe(Effect.provide([sqliteLayer, UnitOfWorkLayer])),
+  );
+});
+
+const authors = table('authors', {
+  id: primaryKey(integer()),
+  name: text(),
+});
+
+const posts = table('posts', {
+  postId: primaryKey(integer()),
+  authorId: integer(),
+});
+
+const authorRelations = relations(authors, ({ many }) => ({
+  posts: many(posts, { columns: { id: 'authorId' } }),
+}));
+
+const sqliteFkLayer = SqliteDriver.layer({
+  path: ':memory:',
+  enableForeignKeys: true,
+});
+
+const createAuthorsAndPosts = Effect.gen(function* () {
+  const db = yield* Driver;
+  const id = db.dialect.quoteIdentifier;
+
+  yield* db.executeRaw(
+    `CREATE TABLE ${id('authors')} (
+      ${id('id')} INTEGER PRIMARY KEY,
+      ${id('name')} TEXT NOT NULL
+    )`,
+    [],
+  );
+  yield* db.executeRaw(
+    `CREATE TABLE ${id('posts')} (
+      ${id('postId')} INTEGER PRIMARY KEY,
+      ${id('authorId')} INTEGER NOT NULL REFERENCES ${id('authors')}(${id('id')})
+    )`,
+    [],
+  );
+});
+
+// The post is registered before its author on purpose: only the insert
+// ordering in commit can make this sequence satisfy the foreign key.
+const registerPostBeforeAuthor = Effect.gen(function* () {
+  yield* createAuthorsAndPosts;
+  const uow = yield* UnitOfWork;
+
+  const savePost = makeRepository(posts)
+    .save({ authorId: 7 })
+    .pipe(Effect.provideService(UnitOfWork, uow));
+  const saveAuthor = makeRepository(authors)
+    .save({ id: 7, name: 'Author' })
+    .pipe(Effect.provideService(UnitOfWork, uow));
+
+  yield* uow.register(posts, savePost);
+  yield* uow.register(authors, saveAuthor);
+
+  return yield* uow.commit;
+});
+
+describe('unit of work insert ordering', () => {
+  it.effect('fails commit with a foreign key violation without relations', () =>
+    Effect.gen(function* () {
+      const result = yield* Effect.result(
+        registerPostBeforeAuthor.pipe(Effect.provide(UnitOfWorkLayer)),
+      );
+
+      expect(expectFailure(result)).toBeInstanceOf(ForeignKeyViolationError);
+    }).pipe(Effect.provide(sqliteFkLayer)),
+  );
+
+  it.effect('inserts the parent first on commit with relations', () =>
+    Effect.gen(function* () {
+      const result = yield* Effect.result(
+        registerPostBeforeAuthor.pipe(
+          Effect.provide(makeUnitOfWorkLayer({ relations: [authorRelations] })),
+        ),
+      );
+
+      expectSuccess(result);
+      expect(
+        yield* selectFrom(authors, 'a').selectAll().execute(),
+      ).toHaveLength(1);
+      expect(yield* selectFrom(posts, 'p').selectAll().execute()).toHaveLength(
+        1,
+      );
+    }).pipe(Effect.provide(sqliteFkLayer)),
   );
 });

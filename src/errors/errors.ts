@@ -91,6 +91,12 @@ export class OptimisticLockError extends Data.TaggedError(
   readonly table: string;
 }> {}
 
+export class CyclicDependencyError extends Data.TaggedError(
+  'CyclicDependencyError',
+)<{
+  readonly tables: ReadonlyArray<string>;
+}> {}
+
 export class EntityAlreadyTrackedError extends Data.TaggedError(
   'EntityAlreadyTrackedError',
 )<{
