@@ -20,7 +20,7 @@ import {
   ReturningError,
 } from '#errors/errors.js';
 import { selectFrom } from '#query/builder.js';
-import { now } from '#query/expressions.js';
+import * as Q from '#query/index.js';
 import { deleteFrom, insertInto } from '#query/write-builders.js';
 import { updateRow } from '#repository/update.js';
 import { type AnyTableDef } from '#schema/table.js';
@@ -237,7 +237,7 @@ export const makeRepository = <
         yield* update(
           id,
           {
-            [softDeleteCol]: now(),
+            [softDeleteCol]: Q.now(),
             // TODO:избавиться от type assertion
           } as InferUpdate<T>,
           updateOptions,

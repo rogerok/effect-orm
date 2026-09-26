@@ -24,8 +24,7 @@ import { compile } from '#compiler/compiler.js';
 import { optimizeSelect } from '#compiler/optimize.js';
 import { Driver } from '#drivers/driver.js';
 import { CodecError } from '#errors/errors.js';
-import { lit } from '#query/expressions.js';
-import { and, between, not, or } from '#query/predicates.js';
+import * as Q from '#query/index.js';
 
 export type AffectedRows = { readonly affectedRows: number };
 
@@ -83,7 +82,7 @@ const encodeLiteral = (
       if (codec) {
         const encoder = codec.encode as (v: unknown) => unknown;
         return yield* Effect.try({
-          try: () => lit(encoder(litExpr.value)),
+          try: () => Q.lit(encoder(litExpr.value)),
           catch: (cause) =>
             new CodecError({
               column: col?.name,
@@ -124,12 +123,12 @@ const encodePredicate = (
       const preds = yield* Effect.forEach(pred.preds, (p) =>
         encodePredicate(p, sources, dialectId),
       );
-      return pred._tag === 'And' ? and(...preds) : or(...preds);
+      return pred._tag === 'And' ? Q.and(...preds) : Q.or(...preds);
     }
 
     if (pred._tag === 'Not') {
       const p = yield* encodePredicate(pred.pred, sources, dialectId);
-      return not(p);
+      return Q.not(p);
     }
 
     if (
@@ -168,7 +167,7 @@ const encodePredicate = (
       const min = yield* encodeLiteral(pred.expr, pred.min, sources, dialectId);
       const max = yield* encodeLiteral(pred.expr, pred.max, sources, dialectId);
 
-      return between(pred.expr, min, max);
+      return Q.between(pred.expr, min, max);
     }
 
     return pred;
@@ -188,7 +187,7 @@ const encodeRow = (
           const encoder = codec.encode as (v: unknown) => unknown;
 
           encodedRow[k] = yield* Effect.try({
-            try: () => lit(encoder(v.value)),
+            try: () => Q.lit(encoder(v.value)),
             catch: (cause) =>
               new CodecError({ cause, value: v.value, column: k }),
           });

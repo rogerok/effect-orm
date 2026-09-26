@@ -11,10 +11,9 @@ import type { ColumnDef } from '#schema/columns.js';
 import type { InferInsert, InferRow, InferUpdate } from '#schema/infer.js';
 import type { AnyTableDef } from '#schema/table.js';
 
-import { col } from '#compiler/ir-constructors.js';
+import * as IR from '#compiler/ir-constructors.js';
 import { makeExpressionBuilder } from '#query/expression-builder.js';
-import { del } from '#query/statements.js';
-import { insert, update as updateStmt } from '#query/statements.js';
+import * as Q from '#query/index.js';
 import { run } from '#query/typed-run.js';
 
 const prepareCodecsFactories = <T extends AnyTableDef, R>(
@@ -69,7 +68,7 @@ export class ExecutableInsert<T extends AnyTableDef, R> {
   ): ExecutableInsert<T, InferReturning<T, Cols>> {
     const ir: InsertIR = {
       ...this.toIR(),
-      returning: cols.map((c) => ({ expr: col(c) })),
+      returning: cols.map((c) => ({ expr: IR.col(c) })),
     };
 
     return new ExecutableInsert<T, InferReturning<T, Cols>>(ir, this.table);
@@ -86,7 +85,7 @@ export class InsertQueryBuilder<T extends AnyTableDef> {
   values(
     rows: ReadonlyArray<InferInsert<T>>,
   ): ExecutableInsert<T, AffectedRows> {
-    const stmt = insert(this.table, rows);
+    const stmt = Q.insert(this.table, rows);
 
     return new ExecutableInsert<T, AffectedRows>(stmt, this.table);
   }
@@ -125,7 +124,7 @@ export class ExecutableUpdate<T extends AnyTableDef, R> {
   ): ExecutableUpdate<T, InferReturning<T, Cols>> {
     const ir: UpdateIR = {
       ...this.toIR(),
-      returning: cols.map((c) => ({ expr: col(c) })),
+      returning: cols.map((c) => ({ expr: IR.col(c) })),
     };
 
     return new ExecutableUpdate<T, InferReturning<T, Cols>>(ir, this.table);
@@ -159,7 +158,7 @@ export class UpdateQueryBuilder<T extends AnyTableDef> {
   }
 
   set(patch: InferUpdate<T>): ExecutableUpdate<T, AffectedRows> {
-    const stmt = updateStmt(this.table, patch);
+    const stmt = Q.update(this.table, patch);
 
     return new ExecutableUpdate<T, AffectedRows>(stmt, this.table);
   }
@@ -204,7 +203,7 @@ export class ExecutableDelete<T extends AnyTableDef, R> {
   ): ExecutableDelete<T, InferReturning<T, Cols>> {
     const ir: DeleteIR = {
       ...this.toIR(),
-      returning: cols.map((c) => ({ expr: col(c) })),
+      returning: cols.map((c) => ({ expr: IR.col(c) })),
     };
 
     return new ExecutableDelete<T, InferReturning<T, Cols>>(this.table, ir);
@@ -228,4 +227,4 @@ export class ExecutableDelete<T extends AnyTableDef, R> {
 export const deleteFrom = <T extends AnyTableDef>(
   table: T,
 ): ExecutableDelete<T, AffectedRows> =>
-  ExecutableDelete.__make(table, del(table));
+  ExecutableDelete.__make(table, Q.del(table));

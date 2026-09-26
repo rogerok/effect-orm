@@ -3,24 +3,7 @@ import type { InferColumn } from '#schema/infer.js';
 import type { AnyTableDef } from '#schema/table.js';
 
 import { ExprTypeId } from '#compiler/ir.js';
-import { lit, now } from '#query/expressions.js';
-import {
-  and,
-  between,
-  bool,
-  eq,
-  gt,
-  gte,
-  isIn,
-  isNotNull,
-  isNull,
-  like,
-  lt,
-  lte,
-  neq,
-  not,
-  or,
-} from '#query/predicates.js';
+import * as Q from '#query/index.js';
 
 export type Source<T extends AnyTableDef, B extends boolean> = {
   nullable: B;
@@ -70,21 +53,21 @@ export const makeExpressionBuilder = <
     name: column,
     [ExprTypeId]: true,
   }),
-  now: now,
-  lit: lit,
-  gte,
-  lte,
-  neq,
-  lt,
-  eq,
-  gt,
-  isNotNull,
-  isNull,
-  not,
-  or,
-  and,
-  bool,
-  between,
-  isIn,
-  like,
+  now: Q.now,
+  lit: Q.lit,
+  gte: Q.gte,
+  lte: Q.lte,
+  neq: Q.neq,
+  lt: Q.lt,
+  eq: Q.eq,
+  gt: Q.gt,
+  isNotNull: Q.isNotNull,
+  isNull: Q.isNull,
+  not: Q.not,
+  or: Q.or,
+  and: Q.and,
+  bool: Q.bool,
+  between: Q.between,
+  isIn: Q.isIn,
+  like: Q.like,
 });

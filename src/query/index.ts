@@ -1,4 +1,4 @@
-export { col, lit } from './expressions.js';
+export { col, lit, now } from './expressions.js';
 export {
   eq,
   gt,

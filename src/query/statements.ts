@@ -10,7 +10,7 @@ import type {
 import type { InferInsert, InferRow, InferUpdate } from '#schema/infer.js';
 import type { AnyTableDef } from '#schema/table.js';
 
-import { col, lit } from '#compiler/ir-constructors.js';
+import * as IR from '#compiler/ir-constructors.js';
 import { isExpr } from '#query/expressions.js';
 
 type SelectOptions = {
@@ -34,7 +34,7 @@ export const select = <
   ({
     _tag: 'Select',
     from: { table: table._name },
-    columns: columns.map((name) => ({ expr: col(name) })),
+    columns: columns.map((name) => ({ expr: IR.col(name) })),
     joins: [],
     where: options.where,
     orderBy: options.orderBy ?? [],
@@ -83,14 +83,14 @@ export const insert = <
     _tag: 'Insert',
     into: table._name,
     rows: rows.map((row) =>
-      Object.fromEntries(Object.entries(row).map(([k, v]) => [k, lit(v)])),
+      Object.fromEntries(Object.entries(row).map(([k, v]) => [k, IR.lit(v)])),
     ),
     returning:
       options.returning === '*'
         ? '*'
         : options.returning !== undefined
           ? (options.returning as ReadonlyArray<string>).map((name) => ({
-              expr: col(name),
+              expr: IR.col(name),
             }))
           : null,
   };
@@ -121,7 +121,7 @@ export const del = <
         ? '*'
         : options.returning !== undefined
           ? (options.returning as ReadonlyArray<string>).map((name) => ({
-              expr: col(name),
+              expr: IR.col(name),
             }))
           : null,
     ...(options.where === undefined ? {} : { where: options.where }),
@@ -138,7 +138,7 @@ interface UpdateOptions<
 }
 
 export const makeUpdateEntries = <T extends AnyTableDef>(set: InferUpdate<T>) =>
-  Object.entries(set).map(([k, v]) => [k, isExpr(v) ? v : lit(v)]);
+  Object.entries(set).map(([k, v]) => [k, isExpr(v) ? v : IR.lit(v)]);
 
 export const update = <
   T extends AnyTableDef,
@@ -157,7 +157,7 @@ export const update = <
         ? '*'
         : options.returning !== undefined
           ? (options.returning as ReadonlyArray<string>).map((name) => ({
-              expr: col(name),
+              expr: IR.col(name),
             }))
           : null,
     ...(options.where === undefined ? {} : { where: options.where }),
